@@ -1,7 +1,7 @@
 {
   "workspace": "./sweeper-data",
   "user_agent": "Example University Sweeper V2/0.1 (archives@example.edu)",
-  "layout": {"major_slots": 2, "minor_slots": 6},
+  "layout": {"major_slots": 2, "minor_slots": 1},
   "policy": {
     "languages": ["en"],
     "licenses": ["CC0-1.0", "CC-BY-4.0", "PUBLIC-DOMAIN"],
@@ -17,11 +17,6 @@
   "sources": [
     {"id":"major-one","slot":1,"lane":"major","manifest":"./manifests/major-one.jsonl","workers":2,"requests_per_second":1.0},
     {"id":"major-two","slot":2,"lane":"major","manifest":"./manifests/major-two.jsonl","workers":2,"requests_per_second":1.0},
-    {"id":"minor-one","slot":1,"lane":"minor","manifest":"./manifests/minor-one.jsonl","workers":1,"requests_per_second":0.5},
-    {"id":"minor-two","slot":2,"lane":"minor","manifest":"./manifests/minor-two.jsonl","workers":1,"requests_per_second":0.5},
-    {"id":"minor-three","slot":3,"lane":"minor","manifest":"./manifests/minor-three.jsonl","workers":1,"requests_per_second":0.5},
-    {"id":"minor-four","slot":4,"lane":"minor","manifest":"./manifests/minor-four.jsonl","workers":1,"requests_per_second":0.5},
-    {"id":"minor-five","slot":5,"lane":"minor","manifest":"./manifests/minor-five.jsonl","workers":1,"requests_per_second":0.5},
-    {"id":"minor-six","slot":6,"lane":"minor","manifest":"./manifests/minor-six.jsonl","workers":1,"requests_per_second":0.5}
+    {"id":"minor-one","slot":1,"lane":"minor","manifest":"./manifests/minor-one.jsonl","continuation_manifests":[],"target_items":500,"workers":1,"requests_per_second":0.5}
   ]
 }

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -107,28 +108,41 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
     config.workspace.mkdir(parents=True, exist_ok=True)
     state = State(config.workspace / "state.sqlite3")
     source_errors = []
+    continuation = []
     try:
         ordered = sorted((s for s in config.sources if s.enabled), key=lambda s: (s.lane != "major", s.slot, s.id))
         for source in ordered:
             delay = 1.0 / source.requests_per_second
             if progress:
                 progress({"phase": "source", "source": source.id})
-            try:
-                for item in candidates(source, config.user_agent):
-                    if state.status(item.source_id, item.item_id) in {"accepted", "rejected", "duplicate"}:
-                        continue
+            manifests = [source.manifest, *source.continuation_manifests]
+            for manifest_index, manifest in enumerate(manifests):
+                active_source = replace(source, manifest=manifest)
+                try:
+                    for item in candidates(active_source, config.user_agent):
+                        if state.status(item.source_id, item.item_id) in {"accepted", "rejected", "duplicate"}:
+                            continue
+                        if progress:
+                            progress({"phase": "item", "source": source.id, "item": item.item_id,
+                                      "continuationManifest": manifest_index})
+                        retrieve(item, active_source, config, state)
+                        time.sleep(delay)
+                except Exception as error:
+                    source_errors.append({"source": source.id, "manifest": manifest,
+                        "error": f"{type(error).__name__}: {error}"})
                     if progress:
-                        progress({"phase": "item", "source": source.id, "item": item.item_id})
-                    retrieve(item, source, config, state)
-                    time.sleep(delay)
-            except Exception as error:
-                source_errors.append({"source": source.id,
-                    "error": f"{type(error).__name__}: {error}"})
-                if progress:
-                    progress({"phase": "source-error", "source": source.id,
-                              "error": source_errors[-1]["error"]})
-                continue
+                        progress({"phase": "source-error", "source": source.id,
+                                  "manifest": manifest, "error": source_errors[-1]["error"]})
+                    continue
+                if source.target_items and state.accepted_count(source.id) >= source.target_items:
+                    break
+            accepted = state.accepted_count(source.id)
+            if source.target_items and accepted < source.target_items:
+                continuation.append({"source": source.id, "accepted": accepted,
+                    "target": source.target_items, "deficit": source.target_items - accepted,
+                    "nextAction": "add-or-discover-continuation-manifest"})
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
-                "sourceErrors": source_errors}
+                "sourceErrors": source_errors, "continuation": continuation,
+                "continuationRequired": bool(continuation)}
     finally:
         state.close()

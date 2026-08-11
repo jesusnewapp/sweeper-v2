@@ -29,6 +29,8 @@ class Source:
     requests_per_second: float = 1.0
     workers: int = 1
     headers: Dict[str, str] = field(default_factory=dict)
+    continuation_manifests: List[str] = field(default_factory=list)
+    target_items: int = 0
 
 
 @dataclass

@@ -38,8 +38,10 @@ system automatically.
 
 ## The boat model
 
-Think of Sweeper as a small, durable research boat. The two major lanes handle
-large repositories, while six minor slots handle smaller or bounded sources.
+Think of Sweeper as a small, durable research boat. The two major sweepers handle
+large repositories, while one lightweight crawler handles a smaller or bounded
+source. After that light lane is proven stable, configuration can expand it to
+as many as six isolated light slots.
 A valid partial catch is retained. Temporary failures use bounded backoff.
 Completed decisions remain checkpointed, and later cycles continue from
 unresolved items. One unavailable source does not erase another source's
@@ -50,10 +52,19 @@ Each network and reviewer operation has a timeout, failed items remain
 retryable, and a broken source is isolated so later slots continue fishing.
 Successful, rejected, and duplicate decisions are durable across restarts.
 
-## The 2 + 6 layout
+Continuation is target-driven and project-neutral. A source may define
+`target_items` plus an ordered `continuation_manifests` pool. Sweeper retains
+every valid partial catch, consumes the next manifest when useful, isolates a
+failed manifest, and reports the remaining deficit with the next action
+`add-or-discover-continuation-manifest`. It never calls a partially productive
+source a total failure, and it never converts an unreviewed staging item into a
+live item merely to satisfy a target.
+
+## Progressive 2 + 1 → 6 layout
 
 - Two major lanes for large repositories.
-- Six minor slots for smaller or bounded sources.
+- One light crawler by default for a smaller or bounded source.
+- Operator-controlled expansion up to six isolated light slots.
 - Per-source request rates and worker ceilings.
 - A shared content-addressed object store and SHA-256 duplicate index.
 - Resumable SQLite state, explicit decisions, and deterministic source order.
@@ -75,7 +86,8 @@ python -m pip install -e .
 sweeper init
 ```
 
-Edit `sweeper.json`: add sources to the two major or six minor slots, specify
+Edit `sweeper.json`: add sources to the two major slots and the initial light
+crawler, specify
 languages, licenses, formats, and size limits, and replace the placeholder user
 agent with a truthful institutional name and contact address. Put stable item
 IDs and download URLs in the generated JSONL manifests. No Python changes are
@@ -155,7 +167,7 @@ downloaded bytes are hashed during streaming and stored once by SHA-256.
 {
   "workspace": "./sweeper-data",
   "user_agent": "Example University Sweeper/2.0 (archives@example.edu)",
-  "layout": {"major_slots": 2, "minor_slots": 6},
+  "layout": {"major_slots": 2, "minor_slots": 1},
   "policy": {
     "languages": ["en"],
     "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],

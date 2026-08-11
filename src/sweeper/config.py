@@ -16,12 +16,19 @@ def load_config(path: Path) -> Config:
         manifest = str(value.get("manifest", ""))
         if urlparse(manifest).scheme not in {"http", "https", "file"}:
             value["manifest"] = str((path.parent / manifest).resolve())
+        continuations = []
+        for location in value.get("continuation_manifests", []):
+            location = str(location)
+            if urlparse(location).scheme not in {"http", "https", "file"}:
+                location = str((path.parent / location).resolve())
+            continuations.append(location)
+        value["continuation_manifests"] = continuations
         sources.append(Source(**value))
     config = Config(
         workspace=(path.parent / raw.get("workspace", "./sweeper-data")).resolve(),
         user_agent=str(raw.get("user_agent", "Institutional-Sweeper/0.1 (+contact-required)")),
         major_slots=int(layout.get("major_slots", 2)),
-        minor_slots=int(layout.get("minor_slots", 6)),
+        minor_slots=int(layout.get("minor_slots", 1)),
         sources=sources,
         policy=Policy(**raw.get("policy", {})),
     )
@@ -30,8 +37,8 @@ def load_config(path: Path) -> Config:
 
 
 def validate_config(config: Config) -> None:
-    if config.major_slots != 2 or config.minor_slots != 6:
-        raise ValueError("Sweeper layout requires exactly two major and six minor slots")
+    if config.major_slots != 2 or not 1 <= config.minor_slots <= 6:
+        raise ValueError("Sweeper requires two major slots and between one and six light slots")
     if not config.user_agent or "contact-required" in config.user_agent:
         raise ValueError("set a truthful user_agent containing institutional contact information")
     ids = [source.id for source in config.sources]
@@ -48,3 +55,7 @@ def validate_config(config: Config) -> None:
             raise ValueError(f"unsafe worker count for {source.id}")
         if source.requests_per_second <= 0 or source.requests_per_second > 10:
             raise ValueError(f"invalid request rate for {source.id}")
+        if source.target_items < 0:
+            raise ValueError(f"target items cannot be negative for {source.id}")
+        if len(source.continuation_manifests) > 1000:
+            raise ValueError(f"continuation manifest pool is too large for {source.id}")

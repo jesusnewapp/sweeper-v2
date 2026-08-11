@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sweeper-v2"
-version = "0.3.1"
-description = "Sweeper V2: resumable, source-neutral bulk acquisition with two major lanes and six minor slots"
+version = "0.4.0"
+description = "Sweeper V2: resumable bulk acquisition with two major sweepers and one-to-six light crawlers"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"

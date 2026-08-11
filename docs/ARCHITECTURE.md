@@ -8,7 +8,9 @@ Sweeper V2 separates four responsibilities:
 4. **State** records accepted, rejected, duplicate, and failed decisions in
    SQLite and stores accepted bytes by content hash.
 
-The configured topology is exactly two major slots and six minor slots. Sources
+The configured topology is exactly two major slots and one to six light slots.
+The default is one light crawler so operators can prove continuation, source
+isolation, rate limits, and checkpoint recovery before scaling toward six. Sources
 are ordered major-first, then by slot. Slot identity is stable across resumes.
 Per-source workers and request rates are bounded by configuration validation.
 

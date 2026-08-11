@@ -16,7 +16,7 @@ from sweeper.translation import LANGUAGES, capabilities, engine_variable
 
 
 class SweeperV2Test(unittest.TestCase):
-    def test_exact_two_plus_six_layout(self):
+    def test_default_two_plus_one_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             example = Path(__file__).parents[1] / "examples/sweeper.example.json"
@@ -26,8 +26,21 @@ class SweeperV2Test(unittest.TestCase):
             path.write_text(json.dumps(data))
             config = load_config(path)
             self.assertEqual(2, config.major_slots)
-            self.assertEqual(6, config.minor_slots)
-            self.assertEqual(8, len(config.sources))
+            self.assertEqual(1, config.minor_slots)
+            self.assertEqual(3, len(config.sources))
+
+    def test_light_layout_can_expand_to_six(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); example = Path(__file__).parents[1] / "examples/sweeper.example.json"
+            data = json.loads(example.read_text()); data["workspace"] = "data"
+            data["layout"]["minor_slots"] = 6
+            for slot in range(2, 7):
+                data["sources"].append({"id": f"minor-{slot}", "slot": slot, "lane": "minor",
+                    "manifest": "./manifests/minor-one.jsonl", "workers": 1,
+                    "requests_per_second": 0.5})
+            path = root / "sweeper.json"; path.write_text(json.dumps(data))
+            config = load_config(path)
+            self.assertEqual(6, config.minor_slots); self.assertEqual(8, len(config.sources))
 
     def test_policy_fails_closed_on_missing_rights(self):
         item = Candidate("s", "i", "https://example.test/i", language="en", license="")
@@ -115,6 +128,28 @@ class SweeperV2Test(unittest.TestCase):
             result = run(load_config(config_path))
             self.assertEqual(1, result["counts"]["accepted"])
             self.assertEqual("broken", result["sourceErrors"][0]["source"])
+
+    def test_continuation_pool_retains_partial_catch_and_reaches_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); manifests = []
+            for number in (1, 2):
+                obj = root / f"object-{number}.txt"; obj.write_text(f"public record {number}")
+                manifest = root / f"manifest-{number}.jsonl"
+                manifest.write_text(json.dumps({"id": str(number), "url": obj.as_uri(),
+                    "language": "en", "license": "CC0-1.0", "media_type": "text/plain"}) + "\n")
+                manifests.append(manifest.name)
+            config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 1},
+                "policy": {"languages": ["en"], "licenses": ["CC0-1.0"],
+                           "media_types": ["text/plain"]},
+                "sources": [{"id": "light", "slot": 1, "lane": "minor",
+                    "manifest": manifests[0], "continuation_manifests": [manifests[1]],
+                    "target_items": 2, "requests_per_second": 10.0}]}))
+            result = run(load_config(config_path))
+            self.assertEqual(2, result["counts"]["accepted"])
+            self.assertFalse(result["continuationRequired"])
 
     def test_translation_bridge_has_exact_ten_languages_and_fails_closed(self):
         self.assertEqual(10, len(LANGUAGES))

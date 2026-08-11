@@ -17,7 +17,7 @@ from .translation import capabilities, translate_file
 EXAMPLE = {
     "workspace": "./sweeper-data",
     "user_agent": "YOUR INSTITUTION Sweeper V2/0.1 (YOUR-CONTACT@example.org)",
-    "layout": {"major_slots": 2, "minor_slots": 6},
+    "layout": {"major_slots": 2, "minor_slots": 1},
     "policy": {
         "languages": ["en"], "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
         "media_types": ["application/json", "application/xml", "text/plain", "text/html"],
