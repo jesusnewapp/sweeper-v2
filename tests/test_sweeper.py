@@ -5,10 +5,12 @@ from pathlib import Path
 
 from sweeper.config import load_config
 from sweeper.cli import initialize
+from sweeper.cli import daemon
 from sweeper.engine import policy_reason
 from sweeper.engine import run
 from sweeper.model import Candidate, Policy
 from sweeper.state import State
+from sweeper.translation import LANGUAGES, capabilities, engine_variable
 
 
 class SweeperV2Test(unittest.TestCase):
@@ -76,6 +78,27 @@ class SweeperV2Test(unittest.TestCase):
             second = run(config)
             self.assertEqual({"accepted": 1, "duplicate": 1}, first["counts"])
             self.assertEqual(first["counts"], second["counts"])
+
+    def test_daemon_once_records_health(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({
+                "workspace": "data", "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 6},
+                "policy": {}, "sources": [],
+            }))
+            self.assertEqual(0, daemon(config_path, 5, once=True))
+            health = json.loads((root / "data/daemon-state.json").read_text())
+            self.assertEqual("healthy", health["status"])
+            self.assertEqual(0, health["consecutiveFailures"])
+            self.assertEqual(5, health["nextCheckSeconds"])
+
+    def test_translation_bridge_has_exact_ten_languages_and_fails_closed(self):
+        self.assertEqual(10, len(LANGUAGES))
+        self.assertEqual("SWEEPER_TRANSLATOR_IT_EN", engine_variable("it", "en"))
+        status = capabilities()
+        self.assertEqual(90, len(status["pairs"]))
 
 
 if __name__ == "__main__":

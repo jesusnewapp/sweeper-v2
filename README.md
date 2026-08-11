@@ -53,6 +53,52 @@ sweeper run --config sweeper.json
 sweeper status --config sweeper.json
 ```
 
+For unattended operation, run:
+
+```bash
+sweeper daemon --config sweeper.json --interval 60
+```
+
+Daemon mode continuously resumes known items, records health in
+`sweeper-data/daemon-state.json`, retries source/manifest failures after the
+configured interval, and keeps independent sources available on later cycles.
+It never converts a policy rejection into an acceptance merely to remain busy.
+Temporary failures use bounded exponential backoff, so an unavailable source
+does not create a busy retry loop. Accepted, rejected, and duplicate decisions
+remain checkpointed; each later cycle continues from unresolved items.
+
+## Website discovery
+
+Search for candidate source websites by category without acquiring their
+content:
+
+```bash
+sweeper discover --config sweeper.json --category "open scientific archives"
+```
+
+Results are a review queue, not permission to crawl. Operators must establish
+the source contract, robots guidance, terms, rights, privacy boundary, stable
+identifiers, and respectful rate limits before adding a discovered site.
+
+## Optional ten-language translation bridge
+
+Sweeper V2 recognizes English, Spanish, French, German, Italian, Portuguese,
+Dutch, Russian, Greek, and Latin. Translation engines are deliberately external
+and local/configurable so the core stays lightweight and does not send data to
+an AI service by default.
+
+```bash
+sweeper translator-status
+export SWEEPER_TRANSLATOR_IT_EN=/path/to/your/local-json-translation-command
+sweeper translate --input source.txt --output derived-en.txt \
+  --source-language it --target-language en
+```
+
+The command receives JSON on standard input and returns
+`{"translation":"..."}`. Sweeper preserves the original, validates basic
+output safety, and writes SHA-256 evidence beside the derived translation.
+Translated output always requires human or domain-specific validation.
+
 ## Source contract
 
 Each source points to a JSON Lines manifest. Every line represents one
