@@ -67,6 +67,11 @@ class State:
                               (source_id,)).fetchone()
         return int(row[0]) if row else 0
 
+    def source_counts(self, source_id: str) -> dict:
+        return {row[0]: int(row[1]) for row in self.db.execute(
+            "SELECT status, COUNT(*) FROM items WHERE source_id=? GROUP BY status", (source_id,)
+        )}
+
     def accepted_items(self) -> list[dict]:
         columns = ("source_id", "item_id", "url", "title", "sha256", "bytes", "local_path", "updated_at")
         rows = self.db.execute(

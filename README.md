@@ -1,6 +1,6 @@
 # Sweeper V2
 
-Sweeper V2 is a lightweight, source-neutral framework for downloading and
+Sweeper V2 is a lightweight, source-neutral framework for continuously acquiring and
 preserving large information collections with reproducible provenance. It can
 be configured for institutional archives, law, science, research datasets,
 books, public records, media, structured directories, or other authorized
@@ -36,6 +36,24 @@ Sweeper is an acquisition and preservation foundation. It does not grant
 rights, bypass access controls, infer permission, or publish into an external
 system automatically.
 
+## Current adoption model
+
+Sweeper V2 uses a **two-major plus two-light default fleet**. Every source keeps
+an independent checkpoint. A lightweight continuation advisor observes durable
+yield, retryable failures, target deficit, lane occupancy, and the positions of
+other sources. It scores a reusable continuation pool and recommends the best
+next move without making that recommendation an unbreakable rule.
+
+An operator or adapter may accept the recommendation, choose a scored
+alternative, or supply a better local continuation with a recorded reason.
+Start with one proven source, adopt the default fleet when healthy, inspect it
+with `sweeper plan`, and expand gradually to at most six light slots when source
+and host capacity permit.
+
+The advisor changes operating pressure and whole-source order only.
+Authorization, rights, policy filters, hashes, deduplication, review, and guarded
+live promotion remain invariant.
+
 ## The boat model
 
 Think of Sweeper as a small, durable research boat. The two major sweepers handle
@@ -57,11 +75,13 @@ that source's delay up to eight times its configured baseline; healthy progress
 gradually returns to the configured rate. Health evidence records every change
 and confirms that integrity gates were not changed.
 
-Continuation is target-driven and project-neutral. A source may define
+Continuation is target-driven, fleet-aware, and project-neutral. A source may define
 `target_items` plus an ordered `continuation_manifests` pool. Sweeper retains
 every valid partial catch, consumes the next manifest when useful, isolates a
 failed manifest, and reports the remaining deficit with the next action
-`add-or-discover-continuation-manifest`. It never calls a partially productive
+`add-or-discover-continuation-manifest`. The advisor also ranks resume, retry,
+source-switch, scope, pacing, and checkpoint options against the configured
+fleet. It never calls a partially productive
 source a total failure, and it never converts an unreviewed staging item into a
 live item merely to satisfy a target.
 
@@ -102,6 +122,7 @@ required for manifest-backed sources.
 sweeper validate --config sweeper.json
 sweeper run --config sweeper.json
 sweeper status --config sweeper.json
+sweeper plan --config sweeper.json
 ```
 
 For unattended operation, run:
@@ -117,6 +138,11 @@ It never converts a policy rejection into an acceptance merely to remain busy.
 Temporary failures use bounded exponential backoff, so an unavailable source
 does not create a busy retry loop. Accepted, rejected, and duplicate decisions
 remain checkpointed; each later cycle continues from unresolved items.
+
+Each completed cycle writes `continuation-plan.json` with source positions, a
+recommended continuation, four alternatives, breathing pressure, and invariant
+safeguards. The readable JSON lets an operator, orchestrator, or AI assistant
+choose a better safe alternative without modifying the acquisition core.
 
 ## Website discovery
 
@@ -205,14 +231,16 @@ sweeper validate --config sweeper.json
 sweeper run --config sweeper.json
 sweeper daemon --config sweeper.json --interval 60
 sweeper status --config sweeper.json
+sweeper plan --config sweeper.json
 sweeper discover --config sweeper.json --category "open scientific archives"
 sweeper translator-status
 sweeper dock-status --config sweeper.json
 ```
 
 The workspace contains `state.sqlite3` for resumable decisions, `objects/` for
-content-addressed bytes, `daemon-state.json` for health and retry timing, and
-`discovered-sources.json` for candidate websites awaiting operator review.
+content-addressed bytes, `daemon-state.json` for health and retry timing,
+`discovered-sources.json` for candidate websites awaiting operator review, and
+`continuation-plan.json` for fleet-aware continuation recommendations.
 
 ## Guarded staging dock and optional live station
 
@@ -288,10 +316,12 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.5.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.6.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.
+This release adds fleet-aware continuation scoring, advisory source reordering
+between whole source turns, explicit breathing state, and `sweeper plan`.
 Provider-specific adapters and export targets
 belong in separate extensions so the core remains small and auditable.
 

@@ -12,6 +12,7 @@ from .discovery import DEFAULT_CATEGORIES, discover
 from .dock import promote, staged, validate_attestation
 from .state import State
 from .translation import capabilities, translate_file
+from .continuation import build_plan
 
 
 EXAMPLE = {
@@ -87,7 +88,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     initialize_command = sub.add_parser("init")
     initialize_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
-    for name in ("validate", "run", "status"):
+    for name in ("validate", "run", "status", "plan"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     daemon_command = sub.add_parser("daemon")
@@ -159,7 +160,10 @@ def main() -> int:
         return 0
     state = State(config.workspace / "state.sqlite3")
     try:
-        print(json.dumps({"counts": state.counts(), "workspace": str(config.workspace)}, indent=2))
+        if args.command == "plan":
+            print(json.dumps(build_plan(config, state), indent=2))
+        else:
+            print(json.dumps({"counts": state.counts(), "workspace": str(config.workspace)}, indent=2))
     finally:
         state.close()
     return 0

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sweeper-v2"
-version = "0.5.0"
-description = "Sweeper V2: resumable bulk acquisition with breathing heavy, medium, and light modes"
+version = "0.6.0"
+description = "Sweeper V2: resilient bulk acquisition with fleet-aware continuation planning"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"

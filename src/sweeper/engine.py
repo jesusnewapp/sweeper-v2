@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .manifest import candidates
+from .continuation import build_plan, prioritized_sources
 from .model import Candidate, Config, Policy, Source
 from .state import State
 
@@ -111,7 +112,9 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
     continuation = []
     breathing = []
     try:
-        ordered = sorted((s for s in config.sources if s.enabled), key=lambda s: (s.lane != "major", s.slot, s.id))
+        # The planner reorders only whole source turns. It never changes item policy,
+        # accepted membership, or an in-progress manifest checkpoint.
+        ordered = prioritized_sources(config, state)
         for source in ordered:
             base_delay = 1.0 / source.requests_per_second
             active_delay = base_delay
@@ -154,8 +157,14 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                 continuation.append({"source": source.id, "accepted": accepted,
                     "target": source.target_items, "deficit": source.target_items - accepted,
                     "nextAction": "add-or-discover-continuation-manifest"})
+        plan = build_plan(config, state)
+        plan_path = config.workspace / "continuation-plan.json"
+        temporary = plan_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(plan_path)
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
                 "sourceErrors": source_errors, "continuation": continuation,
-                "continuationRequired": bool(continuation), "breathing": breathing}
+                "continuationRequired": bool(continuation), "breathing": breathing,
+                "continuationPlan": str(plan_path)}
     finally:
         state.close()

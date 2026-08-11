@@ -15,6 +15,12 @@ six light slots remain valid. Sources
 are ordered major-first, then by slot. Slot identity is stable across resumes.
 Per-source workers and request rates are bounded by configuration validation.
 
+Before each cycle, the continuation advisor reads per-source durable counts and
+peer-lane positions. It scores a project-neutral operation pool and may reorder
+whole source turns. It cannot alter item eligibility or an active manifest
+checkpoint. Its JSON output is advisory, so adapters may select a safer local
+alternative and record their reason.
+
 The core deliberately does not perform login automation, browser scraping,
 robots circumvention, OCR, archive extraction, format conversion, publication,
 or AI calls. These actions have different security and rights profiles and must
