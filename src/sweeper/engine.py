@@ -9,6 +9,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Optional
 
 from .manifest import candidates
 from .model import Candidate, Config, Policy, Source
@@ -102,18 +103,32 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
             temporary.unlink()
 
 
-def run(config: Config) -> dict:
+def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> dict:
     config.workspace.mkdir(parents=True, exist_ok=True)
     state = State(config.workspace / "state.sqlite3")
+    source_errors = []
     try:
         ordered = sorted((s for s in config.sources if s.enabled), key=lambda s: (s.lane != "major", s.slot, s.id))
         for source in ordered:
             delay = 1.0 / source.requests_per_second
-            for item in candidates(source, config.user_agent):
-                if state.status(item.source_id, item.item_id) in {"accepted", "rejected", "duplicate"}:
-                    continue
-                retrieve(item, source, config, state)
-                time.sleep(delay)
-        return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace)}
+            if progress:
+                progress({"phase": "source", "source": source.id})
+            try:
+                for item in candidates(source, config.user_agent):
+                    if state.status(item.source_id, item.item_id) in {"accepted", "rejected", "duplicate"}:
+                        continue
+                    if progress:
+                        progress({"phase": "item", "source": source.id, "item": item.item_id})
+                    retrieve(item, source, config, state)
+                    time.sleep(delay)
+            except Exception as error:
+                source_errors.append({"source": source.id,
+                    "error": f"{type(error).__name__}: {error}"})
+                if progress:
+                    progress({"phase": "source-error", "source": source.id,
+                              "error": source_errors[-1]["error"]})
+                continue
+        return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+                "sourceErrors": source_errors}
     finally:
         state.close()

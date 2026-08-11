@@ -51,10 +51,22 @@ def daemon(config_path: Path, interval: float, once: bool = False,
     config = load_config(config_path)
     state_path = config.workspace / "daemon-state.json"
     consecutive_failures = 0
+    def write_health(value: dict) -> None:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(state_path)
+
     while True:
         payload = {"mode": "always-running", "checkedAt": datetime.now(timezone.utc).isoformat()}
         try:
-            payload.update({"status": "healthy", "result": run(config)})
+            def heartbeat(detail: dict) -> None:
+                write_health({"mode": "always-running", "status": "working",
+                    "checkedAt": datetime.now(timezone.utc).isoformat(), "progress": detail,
+                    "consecutiveFailures": consecutive_failures})
+            result = run(config, progress=heartbeat)
+            payload.update({"status": "degraded" if result.get("sourceErrors") else "healthy",
+                            "result": result})
         except Exception as error:
             payload.update({"status": "retrying", "error": f"{type(error).__name__}: {error}"})
             consecutive_failures += 1
@@ -63,10 +75,7 @@ def daemon(config_path: Path, interval: float, once: bool = False,
         next_delay = min(max_backoff, interval * (2 ** max(0, consecutive_failures - 1)))
         payload.update({"consecutiveFailures": consecutive_failures,
                         "nextCheckSeconds": next_delay})
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(state_path)
+        write_health(payload)
         print(json.dumps(payload, indent=2), flush=True)
         if once:
             return 0 if payload["status"] == "healthy" else 1

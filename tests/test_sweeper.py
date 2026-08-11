@@ -96,6 +96,26 @@ class SweeperV2Test(unittest.TestCase):
             self.assertEqual(0, health["consecutiveFailures"])
             self.assertEqual(5, health["nextCheckSeconds"])
 
+    def test_broken_source_does_not_stop_later_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            good_object = root / "good.txt"; good_object.write_text("good public record")
+            good_manifest = root / "good.jsonl"
+            good_manifest.write_text(json.dumps({"id": "good", "url": good_object.as_uri(),
+                "language": "en", "license": "CC0-1.0", "media_type": "text/plain"}) + "\n")
+            config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 6},
+                "policy": {"languages": ["en"], "licenses": ["CC0-1.0"],
+                           "media_types": ["text/plain"]},
+                "sources": [
+                    {"id": "broken", "slot": 1, "lane": "major", "manifest": "missing.jsonl"},
+                    {"id": "good", "slot": 2, "lane": "major", "manifest": "good.jsonl"}]}))
+            result = run(load_config(config_path))
+            self.assertEqual(1, result["counts"]["accepted"])
+            self.assertEqual("broken", result["sourceErrors"][0]["source"])
+
     def test_translation_bridge_has_exact_ten_languages_and_fails_closed(self):
         self.assertEqual(10, len(LANGUAGES))
         self.assertEqual("SWEEPER_TRANSLATOR_IT_EN", engine_variable("it", "en"))

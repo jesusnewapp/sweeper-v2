@@ -45,6 +45,11 @@ Completed decisions remain checkpointed, and later cycles continue from
 unresolved items. One unavailable source does not erase another source's
 progress.
 
+The daemon writes live `working` heartbeats with the current source and item.
+Each network and reviewer operation has a timeout, failed items remain
+retryable, and a broken source is isolated so later slots continue fishing.
+Successful, rejected, and duplicate decisions are durable across restarts.
+
 ## The 2 + 6 layout
 
 - Two major lanes for large repositories.
@@ -266,7 +271,7 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.3 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.3.1 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.
