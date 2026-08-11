@@ -52,6 +52,11 @@ Each network and reviewer operation has a timeout, failed items remain
 retryable, and a broken source is isolated so later slots continue fishing.
 Successful, rejected, and duplicate decisions are durable across restarts.
 
+Breathing adjusts operating pressure, not integrity. Failed retrievals increase
+that source's delay up to eight times its configured baseline; healthy progress
+gradually returns to the configured rate. Health evidence records every change
+and confirms that integrity gates were not changed.
+
 Continuation is target-driven and project-neutral. A source may define
 `target_items` plus an ordered `continuation_manifests` pool. Sweeper retains
 every valid partial catch, consumes the next manifest when useful, isolates a
@@ -60,10 +65,10 @@ failed manifest, and reports the remaining deficit with the next action
 source a total failure, and it never converts an unreviewed staging item into a
 live item merely to satisfy a target.
 
-## Progressive 2 + 1 → 6 layout
+## Progressive 2 + 1 → 2 → 6 layout
 
 - Two major lanes for large repositories.
-- One light crawler by default for a smaller or bounded source.
+- Two light crawlers by default after the single-crawler proof.
 - Operator-controlled expansion up to six isolated light slots.
 - Per-source request rates and worker ceilings.
 - A shared content-addressed object store and SHA-256 duplicate index.
@@ -86,8 +91,8 @@ python -m pip install -e .
 sweeper init
 ```
 
-Edit `sweeper.json`: add sources to the two major slots and the initial light
-crawler, specify
+Edit `sweeper.json`: add sources to the two major slots and two initial light
+crawlers, specify
 languages, licenses, formats, and size limits, and replace the placeholder user
 agent with a truthful institutional name and contact address. Put stable item
 IDs and download URLs in the generated JSONL manifests. No Python changes are
@@ -167,7 +172,7 @@ downloaded bytes are hashed during streaming and stored once by SHA-256.
 {
   "workspace": "./sweeper-data",
   "user_agent": "Example University Sweeper/2.0 (archives@example.edu)",
-  "layout": {"major_slots": 2, "minor_slots": 1},
+  "layout": {"major_slots": 2, "minor_slots": 2},
   "policy": {
     "languages": ["en"],
     "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
@@ -283,7 +288,7 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.3.1 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.5.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.

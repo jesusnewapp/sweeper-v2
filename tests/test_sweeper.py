@@ -16,7 +16,7 @@ from sweeper.translation import LANGUAGES, capabilities, engine_variable
 
 
 class SweeperV2Test(unittest.TestCase):
-    def test_default_two_plus_one_layout(self):
+    def test_default_two_plus_two_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             example = Path(__file__).parents[1] / "examples/sweeper.example.json"
@@ -26,15 +26,15 @@ class SweeperV2Test(unittest.TestCase):
             path.write_text(json.dumps(data))
             config = load_config(path)
             self.assertEqual(2, config.major_slots)
-            self.assertEqual(1, config.minor_slots)
-            self.assertEqual(3, len(config.sources))
+            self.assertEqual(2, config.minor_slots)
+            self.assertEqual(4, len(config.sources))
 
     def test_light_layout_can_expand_to_six(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); example = Path(__file__).parents[1] / "examples/sweeper.example.json"
             data = json.loads(example.read_text()); data["workspace"] = "data"
             data["layout"]["minor_slots"] = 6
-            for slot in range(2, 7):
+            for slot in range(3, 7):
                 data["sources"].append({"id": f"minor-{slot}", "slot": slot, "lane": "minor",
                     "manifest": "./manifests/minor-one.jsonl", "workers": 1,
                     "requests_per_second": 0.5})

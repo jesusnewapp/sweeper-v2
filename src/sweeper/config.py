@@ -28,7 +28,7 @@ def load_config(path: Path) -> Config:
         workspace=(path.parent / raw.get("workspace", "./sweeper-data")).resolve(),
         user_agent=str(raw.get("user_agent", "Institutional-Sweeper/0.1 (+contact-required)")),
         major_slots=int(layout.get("major_slots", 2)),
-        minor_slots=int(layout.get("minor_slots", 1)),
+        minor_slots=int(layout.get("minor_slots", 2)),
         sources=sources,
         policy=Policy(**raw.get("policy", {})),
     )

@@ -109,10 +109,12 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
     state = State(config.workspace / "state.sqlite3")
     source_errors = []
     continuation = []
+    breathing = []
     try:
         ordered = sorted((s for s in config.sources if s.enabled), key=lambda s: (s.lane != "major", s.slot, s.id))
         for source in ordered:
-            delay = 1.0 / source.requests_per_second
+            base_delay = 1.0 / source.requests_per_second
+            active_delay = base_delay
             if progress:
                 progress({"phase": "source", "source": source.id})
             manifests = [source.manifest, *source.continuation_manifests]
@@ -126,7 +128,18 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                             progress({"phase": "item", "source": source.id, "item": item.item_id,
                                       "continuationManifest": manifest_index})
                         retrieve(item, active_source, config, state)
-                        time.sleep(delay)
+                        outcome = state.status(item.source_id, item.item_id)
+                        if outcome == "failed":
+                            active_delay = min(base_delay * 8, active_delay * 1.5)
+                            mode = "exhale-reduce-pressure"
+                        else:
+                            active_delay = max(base_delay, active_delay * 0.9)
+                            mode = "inhale-normal-pressure"
+                        breathing.append({"source": source.id, "mode": mode,
+                            "delaySeconds": round(active_delay, 3), "outcome": outcome,
+                            "integrityGatesChanged": False})
+                        if len(breathing) > 100: del breathing[:-100]
+                        time.sleep(active_delay)
                 except Exception as error:
                     source_errors.append({"source": source.id, "manifest": manifest,
                         "error": f"{type(error).__name__}: {error}"})
@@ -143,6 +156,6 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                     "nextAction": "add-or-discover-continuation-manifest"})
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
                 "sourceErrors": source_errors, "continuation": continuation,
-                "continuationRequired": bool(continuation)}
+                "continuationRequired": bool(continuation), "breathing": breathing}
     finally:
         state.close()
