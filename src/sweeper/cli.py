@@ -9,6 +9,7 @@ from pathlib import Path
 from .config import load_config
 from .engine import run
 from .discovery import DEFAULT_CATEGORIES, discover
+from .dock import promote, staged, validate_attestation
 from .state import State
 from .translation import capabilities, translate_file
 
@@ -96,6 +97,15 @@ def main() -> int:
     translate_command.add_argument("--source-language", required=True)
     translate_command.add_argument("--target-language", required=True)
     translate_command.add_argument("--engine-command")
+    dock_status = sub.add_parser("dock-status")
+    dock_status.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    dock_validate = sub.add_parser("dock-validate")
+    dock_validate.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    dock_validate.add_argument("--attestation", type=Path, required=True)
+    dock_promote = sub.add_parser("dock-promote")
+    dock_promote.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    dock_promote.add_argument("--publisher-command", nargs="+", required=True)
+    dock_promote.add_argument("--verifier-command", nargs="+", required=True)
     args = parser.parse_args()
     if args.command == "init":
         initialize(args.config.resolve())
@@ -117,6 +127,20 @@ def main() -> int:
         output = args.output.resolve() if args.output else config.workspace / "discovered-sources.json"
         print(json.dumps(discover(args.category or list(DEFAULT_CATEGORIES), output,
                                   config.user_agent), indent=2)); return 0
+    if args.command in {"dock-status", "dock-validate", "dock-promote"}:
+        config = load_config(args.config.resolve())
+        if args.command == "dock-status":
+            state = State(config.workspace / "state.sqlite3")
+            try: items = staged(state)
+            finally: state.close()
+            print(json.dumps({"staged": len(items), "liveEnabled": False,
+                              "validationPresent": (config.workspace / "dock-validation.json").exists(),
+                              "promotionPresent": (config.workspace / "dock-promotion.json").exists()}, indent=2))
+            return 0
+        if args.command == "dock-validate":
+            print(json.dumps(validate_attestation(config.workspace, args.attestation.resolve()), indent=2)); return 0
+        print(json.dumps(promote(config.workspace, args.publisher_command,
+                                 args.verifier_command), indent=2)); return 0
     config = load_config(args.config.resolve())
     if args.command == "validate":
         print(json.dumps({"valid": True, "sources": len(config.sources), "workspace": str(config.workspace)}, indent=2))

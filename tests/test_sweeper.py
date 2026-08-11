@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from sweeper.cli import initialize
 from sweeper.cli import daemon
 from sweeper.engine import policy_reason
 from sweeper.engine import run
+from sweeper.dock import membership, validate_attestation
 from sweeper.model import Candidate, Policy
 from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
@@ -99,6 +101,21 @@ class SweeperV2Test(unittest.TestCase):
         self.assertEqual("SWEEPER_TRANSLATOR_IT_EN", engine_variable("it", "en"))
         status = capabilities()
         self.assertEqual(90, len(status["pairs"]))
+
+    def test_staging_dock_requires_exact_hash_bound_attestation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); obj = root / "object"; obj.write_bytes(b"staged")
+            digest = hashlib.sha256(obj.read_bytes()).hexdigest()
+            state = State(root / "state.sqlite3")
+            state.record(source_id="s", item_id="1", url="u", title="t", status="accepted",
+                         updated_at="now", digest=digest,
+                         size=6, local_path=str(obj))
+            items = state.accepted_items(); state.close()
+            attestation = root / "approval.json"
+            attestation.write_text(json.dumps({"approved": True, "reviewed_by": "Reviewer",
+                "reviewed_at": "now", "items": membership(items)}))
+            result = validate_attestation(root, attestation)
+            self.assertTrue(result["passed"]); self.assertEqual(1, result["item_count"])
 
 
 if __name__ == "__main__":

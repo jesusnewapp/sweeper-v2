@@ -61,3 +61,11 @@ class State:
 
     def counts(self) -> dict:
         return {row[0]: row[1] for row in self.db.execute("SELECT status, COUNT(*) FROM items GROUP BY status")}
+
+    def accepted_items(self) -> list[dict]:
+        columns = ("source_id", "item_id", "url", "title", "sha256", "bytes", "local_path", "updated_at")
+        rows = self.db.execute(
+            "SELECT source_id,item_id,url,title,sha256,bytes,local_path,updated_at "
+            "FROM items WHERE status='accepted' ORDER BY source_id,item_id"
+        )
+        return [dict(zip(columns, row)) for row in rows]

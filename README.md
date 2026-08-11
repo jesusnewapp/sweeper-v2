@@ -16,6 +16,35 @@ an AI vendor. It downloads only sources that the operator configures and is
 intentionally fail-closed when required identity, rights, or policy metadata is
 missing.
 
+## What the program does
+
+Sweeper V2 moves authorized information from source manifests into a local,
+content-addressed archive:
+
+1. Read stable item identities and download URLs.
+2. Apply the configured language, license, format, data-class, artifact-class,
+   and size policy before acquisition.
+3. Download candidates at the source's configured request rate.
+4. Stream every object through SHA-256 hashing without loading the entire object
+   into memory.
+5. Store identical bytes once and record duplicates explicitly.
+6. Optionally invoke an operator-configured reviewer.
+7. Save decisions in SQLite so an interrupted run continues instead of starting
+   over.
+
+Sweeper is an acquisition and preservation foundation. It does not grant
+rights, bypass access controls, infer permission, or publish into an external
+system automatically.
+
+## The boat model
+
+Think of Sweeper as a small, durable research boat. The two major lanes handle
+large repositories, while six minor slots handle smaller or bounded sources.
+A valid partial catch is retained. Temporary failures use bounded backoff.
+Completed decisions remain checkpointed, and later cycles continue from
+unresolved items. One unavailable source does not erase another source's
+progress.
+
 ## The 2 + 6 layout
 
 - Two major lanes for large repositories.
@@ -115,6 +144,92 @@ separate open-public and institution-authorized material. Policy can allowlist
 language, license, media type, artifact class, data class, and byte bounds. The
 downloaded bytes are hashed during streaming and stored once by SHA-256.
 
+## Minimal configuration
+
+```json
+{
+  "workspace": "./sweeper-data",
+  "user_agent": "Example University Sweeper/2.0 (archives@example.edu)",
+  "layout": {"major_slots": 2, "minor_slots": 6},
+  "policy": {
+    "languages": ["en"],
+    "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
+    "media_types": ["text/plain", "text/html", "application/json"],
+    "data_classes": ["open-public"],
+    "minimum_bytes": 1,
+    "maximum_bytes": 1073741824,
+    "require_language": true,
+    "require_license": true
+  },
+  "sources": [{
+    "id": "example-archive",
+    "lane": "major",
+    "slot": 1,
+    "manifest": "./manifests/example.jsonl",
+    "requests_per_second": 1.0,
+    "workers": 1
+  }]
+}
+```
+
+Start with one source, inspect its decisions and stored objects, then expand.
+Every enabled source must occupy a unique lane and slot.
+
+## Commands and workspace outputs
+
+```bash
+sweeper init
+sweeper validate --config sweeper.json
+sweeper run --config sweeper.json
+sweeper daemon --config sweeper.json --interval 60
+sweeper status --config sweeper.json
+sweeper discover --config sweeper.json --category "open scientific archives"
+sweeper translator-status
+sweeper dock-status --config sweeper.json
+```
+
+The workspace contains `state.sqlite3` for resumable decisions, `objects/` for
+content-addressed bytes, `daemon-state.json` for health and retry timing, and
+`discovered-sources.json` for candidate websites awaiting operator review.
+
+## Guarded staging dock and optional live station
+
+Acquisition always lands in the staging dock first. A live destination is not
+configured or contacted by default. Before promotion, an operator or review
+system must create an attestation binding approval to every staged object's
+exact source ID, item ID, and SHA-256 digest:
+
+```json
+{
+  "approved": true,
+  "reviewed_by": "Institutional review team",
+  "reviewed_at": "2026-08-11T12:00:00Z",
+  "items": {"example-archive:record-001": "EXPECTED_SHA256"}
+}
+```
+
+Validate and freeze that exact membership:
+
+```bash
+sweeper dock-validate --config sweeper.json --attestation approval.json
+```
+
+Live promotion is an explicit, separate operation. The operator supplies both
+a publisher and an independent verifier; Sweeper sends JSON on standard input
+and requires JSON responses containing the exact item keys in `published` and
+`verified`, respectively:
+
+```bash
+sweeper dock-promote --config sweeper.json \
+  --publisher-command ./publish-approved-data \
+  --verifier-command ./verify-live-data
+```
+
+Promotion fails closed if an object changes, membership differs, either
+command fails, or either response omits an item. Evidence is written to
+`dock-validation.json` and `dock-promotion.json`. Acquisition can continue in
+staging even when no live connector exists or a live destination is offline.
+
 Phone numbers and email addresses may be processed only when the operator is
 authorized to acquire and use those records—for example, a consented internal
 directory or a lawfully published government contact dataset. Sweeper V2 is not
@@ -151,10 +266,11 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.1 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.3 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
-resumption, and status counts. Provider-specific adapters and export targets
+resumption, status counts, and guarded hash-bound staging-to-live promotion.
+Provider-specific adapters and export targets
 belong in separate extensions so the core remains small and auditable.
 
 ## License
