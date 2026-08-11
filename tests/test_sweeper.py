@@ -9,7 +9,7 @@ from sweeper.cli import initialize
 from sweeper.cli import daemon
 from sweeper.engine import policy_reason
 from sweeper.engine import run
-from sweeper.dock import membership, validate_attestation
+from sweeper.dock import cleanup_verified_staging, membership, validate_attestation
 from sweeper.model import Candidate, Policy
 from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
@@ -188,11 +188,23 @@ class SweeperV2Test(unittest.TestCase):
                          updated_at="now", reason="timeout")
             plan = build_plan(config, state); state.close()
             self.assertEqual("fleet-aware-continuation-advisor", plan["model"])
+            self.assertGreaterEqual(len(plan["pool"]), 20)
+            self.assertEqual(len(plan["pool"]), len(set(plan["pool"])))
             self.assertEqual(2, len(plan["decisions"]))
             light = next(row for row in plan["decisions"] if row["source"] == "light")
             self.assertTrue(light["autonomy"]["advisoryOnly"])
             self.assertEqual("steady", light["breathing"]["mode"])
             self.assertIn(light["recommendedAction"], plan["pool"])
+
+    def test_cleanup_requires_passing_exact_promotion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "dock-promotion.json"):
+                cleanup_verified_staging(root, ["unused"])
+            (root / "dock-promotion.json").write_text(json.dumps({"passed": False,
+                "published": ["s:1"], "verified": [], "items": {"s:1": "abc"}}))
+            with self.assertRaisesRegex(ValueError, "live verification is incomplete"):
+                cleanup_verified_staging(root, ["unused"])
 
 
 if __name__ == "__main__":

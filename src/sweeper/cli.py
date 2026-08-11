@@ -9,7 +9,7 @@ from pathlib import Path
 from .config import load_config
 from .engine import run
 from .discovery import DEFAULT_CATEGORIES, discover
-from .dock import promote, staged, validate_attestation
+from .dock import cleanup_verified_staging, promote, staged, validate_attestation
 from .state import State
 from .translation import capabilities, translate_file
 from .continuation import build_plan
@@ -116,6 +116,10 @@ def main() -> int:
     dock_promote.add_argument("--config", type=Path, default=Path("sweeper.json"))
     dock_promote.add_argument("--publisher-command", nargs="+", required=True)
     dock_promote.add_argument("--verifier-command", nargs="+", required=True)
+    dock_promote.add_argument("--cleanup-command", nargs="+")
+    dock_cleanup = sub.add_parser("dock-cleanup")
+    dock_cleanup.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    dock_cleanup.add_argument("--cleanup-command", nargs="+", required=True)
     args = parser.parse_args()
     if args.command == "init":
         initialize(args.config.resolve())
@@ -137,7 +141,7 @@ def main() -> int:
         output = args.output.resolve() if args.output else config.workspace / "discovered-sources.json"
         print(json.dumps(discover(args.category or list(DEFAULT_CATEGORIES), output,
                                   config.user_agent), indent=2)); return 0
-    if args.command in {"dock-status", "dock-validate", "dock-promote"}:
+    if args.command in {"dock-status", "dock-validate", "dock-promote", "dock-cleanup"}:
         config = load_config(args.config.resolve())
         if args.command == "dock-status":
             state = State(config.workspace / "state.sqlite3")
@@ -149,8 +153,13 @@ def main() -> int:
             return 0
         if args.command == "dock-validate":
             print(json.dumps(validate_attestation(config.workspace, args.attestation.resolve()), indent=2)); return 0
-        print(json.dumps(promote(config.workspace, args.publisher_command,
-                                 args.verifier_command), indent=2)); return 0
+        if args.command == "dock-cleanup":
+            print(json.dumps(cleanup_verified_staging(config.workspace,
+                                                       args.cleanup_command), indent=2)); return 0
+        result = promote(config.workspace, args.publisher_command, args.verifier_command)
+        if args.cleanup_command:
+            result["cleanup"] = cleanup_verified_staging(config.workspace, args.cleanup_command)
+        print(json.dumps(result, indent=2)); return 0
     config = load_config(args.config.resolve())
     if args.command == "validate":
         print(json.dumps({"valid": True, "sources": len(config.sources), "workspace": str(config.workspace)}, indent=2))
