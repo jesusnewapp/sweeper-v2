@@ -13,6 +13,7 @@ from sweeper.dock import membership, validate_attestation
 from sweeper.model import Candidate, Policy
 from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
+from sweeper.continuation import build_plan
 
 
 class SweeperV2Test(unittest.TestCase):
@@ -171,6 +172,27 @@ class SweeperV2Test(unittest.TestCase):
                 "reviewed_at": "now", "items": membership(items)}))
             result = validate_attestation(root, attestation)
             self.assertTrue(result["passed"]); self.assertEqual(1, result["item_count"])
+
+    def test_continuation_plan_is_fleet_aware_and_advisory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 2}, "policy": {},
+                "sources": [
+                    {"id": "major", "slot": 1, "lane": "major", "manifest": "a.jsonl"},
+                    {"id": "light", "slot": 1, "lane": "minor", "manifest": "b.jsonl",
+                     "target_items": 10}]}))
+            config = load_config(config_path); state = State(config.workspace / "state.sqlite3")
+            state.record(source_id="light", item_id="1", url="u", title="t", status="failed",
+                         updated_at="now", reason="timeout")
+            plan = build_plan(config, state); state.close()
+            self.assertEqual("fleet-aware-continuation-advisor", plan["model"])
+            self.assertEqual(2, len(plan["decisions"]))
+            light = next(row for row in plan["decisions"] if row["source"] == "light")
+            self.assertTrue(light["autonomy"]["advisoryOnly"])
+            self.assertEqual("steady", light["breathing"]["mode"])
+            self.assertIn(light["recommendedAction"], plan["pool"])
 
 
 if __name__ == "__main__":
