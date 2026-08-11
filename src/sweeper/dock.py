@@ -102,3 +102,24 @@ def promote(workspace: Path, publisher: list[str], verifier: list[str]) -> dict:
                 "items": current, "published": keys, "verified": keys, "passed": True}
     atomic_json(workspace / "dock-promotion.json", evidence)
     return evidence
+
+
+def cleanup_verified_staging(workspace: Path, cleaner: list[str]) -> dict:
+    promotion_path = workspace / "dock-promotion.json"
+    if not promotion_path.exists():
+        raise ValueError("dock-promotion.json is required before staging cleanup")
+    promotion = json.loads(promotion_path.read_text(encoding="utf-8"))
+    if promotion.get("passed") is not True or promotion.get("published") != promotion.get("verified"):
+        raise ValueError("exact live verification is incomplete; refusing staging cleanup")
+    keys = sorted(map(str, promotion.get("verified", [])))
+    if not keys or sorted(promotion.get("items", {})) != keys:
+        raise ValueError("promotion evidence membership is incomplete")
+    result = command_json(cleaner, {"operation": "delete-verified-staging",
+        "items": promotion["items"], "promotion": promotion, "requested_at": now()})
+    if sorted(map(str, result.get("deleted", []))) != keys:
+        raise ValueError("cleaner did not confirm deletion of the exact verified membership")
+    evidence = {"schema_version": 1, "cleaned_at": now(), "item_count": len(keys),
+                "deleted": keys, "promotion_sha256": hashlib.sha256(
+                    promotion_path.read_bytes()).hexdigest(), "passed": True}
+    atomic_json(workspace / "dock-cleanup.json", evidence)
+    return evidence

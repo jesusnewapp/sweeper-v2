@@ -85,6 +85,13 @@ fleet. It never calls a partially productive
 source a total failure, and it never converts an unreviewed staging item into a
 live item merely to satisfy a target.
 
+The built-in pool currently contains 24 operations spanning checkpoint resume,
+manifest/cursor advancement, source discovery and rotation, cache reuse,
+pressure changes, review retry, per-item quarantine, survivor rebinding,
+revalidation, live-delta refresh, writer recovery, queue advancement, and
+verified staging cleanup. Extensions can propose local candidates; the advisor
+still records the chosen action and keeps invariant gates unchanged.
+
 ## Progressive 2 + 1 → 2 → 6 layout
 
 - Two major lanes for large repositories.
@@ -272,13 +279,28 @@ and requires JSON responses containing the exact item keys in `published` and
 ```bash
 sweeper dock-promote --config sweeper.json \
   --publisher-command ./publish-approved-data \
-  --verifier-command ./verify-live-data
+  --verifier-command ./verify-live-data \
+  --cleanup-command ./delete-verified-staging
 ```
 
 Promotion fails closed if an object changes, membership differs, either
 command fails, or either response omits an item. Evidence is written to
 `dock-validation.json` and `dock-promotion.json`. Acquisition can continue in
 staging even when no live connector exists or a live destination is offline.
+
+Staging deletion is optional and can occur only after exact live verification.
+The cleanup command receives the hash-bound promoted membership and must return
+`{"deleted":["source:item", "..."]}` for that exact set. A partial response or
+cleanup failure preserves staging and fails closed. If live promotion succeeded
+but cleanup later failed, retry cleanup without republishing:
+
+```bash
+sweeper dock-cleanup --config sweeper.json \
+  --cleanup-command ./delete-verified-staging
+```
+
+Successful deletion is recorded in `dock-cleanup.json` and bound to the exact
+`dock-promotion.json` hash.
 
 Phone numbers and email addresses may be processed only when the operator is
 authorized to acquire and use those records—for example, a consented internal
@@ -316,7 +338,7 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.6.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.6.1 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.

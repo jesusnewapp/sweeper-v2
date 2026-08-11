@@ -18,6 +18,20 @@ DEFAULT_POOL = (
     "broaden-next-cycle-scope",
     "checkpoint-and-yield-slot",
     "resume-from-checkpoint",
+    "refresh-source-manifest",
+    "advance-source-cursor",
+    "discover-replacement-source",
+    "rotate-to-compatible-source",
+    "reuse-verified-object-cache",
+    "retry-review-helper",
+    "quarantine-failed-members",
+    "rebind-survivor-membership",
+    "revalidate-changed-survivors",
+    "resume-verification-only",
+    "refresh-live-delta",
+    "recover-stale-writer-lease",
+    "advance-next-ready-unit",
+    "cleanup-live-verified-staging",
 )
 
 
@@ -45,6 +59,22 @@ def _score(action: str, source: Source, counts: dict, peer_stages: dict) -> tupl
         score += 12; reasons.append("smaller scope limits repeated failure cost")
     if action == "resume-from-checkpoint":
         score += 15; reasons.append("restart-safe default")
+    if action in {"retry-review-helper", "quarantine-failed-members"} and failed:
+        score += 20; reasons.append("isolates item failures without discarding successful work")
+    if action in {"rebind-survivor-membership", "revalidate-changed-survivors"} and failed:
+        score += 16; reasons.append("rebuilds an exact survivor checkpoint")
+    if action in {"refresh-source-manifest", "advance-source-cursor",
+                  "discover-replacement-source", "rotate-to-compatible-source"} and deficit:
+        score += 15; reasons.append("opens another authorized path toward the target")
+    if action == "reuse-verified-object-cache" and accepted:
+        score += 14; reasons.append("avoids repeating unchanged retrieval work")
+    if action in {"resume-verification-only", "refresh-live-delta",
+                  "advance-next-ready-unit"} and accepted:
+        score += 12; reasons.append("advances completed acquisition work")
+    if action == "recover-stale-writer-lease" and failed:
+        score += 8; reasons.append("available only after proving the prior owner is absent")
+    if action == "cleanup-live-verified-staging":
+        score += 5; reasons.append("eligible only after exact live verification")
     return score, reasons
 
 
