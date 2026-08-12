@@ -562,6 +562,23 @@ sweeper dock-cleanup --config sweeper.json \
 Successful deletion is recorded in `dock-cleanup.json` and bound to the exact
 `dock-promotion.json` hash.
 
+Deployments with reproducible source downloads may reclaim raw source cache
+earlier, after an exact non-production staging receipt. Write `dock-staging.json`
+with `passed: true`, `production_mutated: false`, and the exact hash-bound item
+membership, then run:
+
+```bash
+python -m sweeper.source_cleanup --workspace ./data \
+  --cleanup-command ./delete-exact-rehydratable-source-cache
+```
+
+The cleaner must confirm every exact key and report reclaimed bytes. This never
+deletes staged artifacts, catalogs, hashes, journals, checkpoints, receipts, or
+active-unit data. If later validation needs original source evidence, restore it
+from recorded URLs and require the recorded hashes before promotion. Local
+manuscripts may be discarded only after exact live verification; retain their
+hash manifest and cleanup receipt.
+
 Phone numbers and email addresses may be processed only when the operator is
 authorized to acquire and use those records—for example, a consented internal
 directory or a lawfully published government contact dataset. Web Sweeper is not

@@ -160,6 +160,11 @@ staging throughput cannot silently outrun verified publication capacity.
 - Never delete from an active unit. Resolve cleanup targets from completed
   receipt membership, validate every path beneath the configured cache root,
   log the reclaimed count and bytes, then recheck free space and worker health.
+- Run that exact source-cache disposal automatically after each passing staging
+  receipt when the deployment has configured hash-verified rehydration. After
+  exact live verification, also discard the corresponding local manuscript
+  payload while retaining its catalog, manuscript-hash manifest, promotion
+  receipt, live-verification receipt, and cleanup ledger.
 - Evaluate projected headroom before beginning the successor unit. The gate must
   include the configured reserve plus the largest measured temporary/atomic
   working set; accepted-item count alone is not a disk estimate.
