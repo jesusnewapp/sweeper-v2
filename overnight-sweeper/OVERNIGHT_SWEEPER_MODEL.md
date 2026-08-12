@@ -16,9 +16,10 @@ quality, provenance, hashing, deduplication, or continuation rules.
 - Allow the operator to raise a source unit ceiling when measured acceptance
   throughput and free-space headroom support it; the ceiling changes packaging
   size only and never weakens item gates or the capacity stop.
-- Begin high-throughput operation at no more than 1,000 accepted works per unit.
-  Larger book units use measured tiers of 2,500, 5,000, and finally 10,000.
-  Never exceed 10,000 complete books in one staging unit.
+- Let the operator select the next unit size explicitly. Start at 50 or 100
+  while proving the lane, and never exceed 1,000 accepted items in one staging
+  unit. This applies across configured artifact classes; the public runtime
+  enforces the ceiling.
 - After a successful staging upload, record a receipt and immediately begin the
   next source unit.
 - Treat exhaustion of one discovery page, cursor window, or partition as an
@@ -59,11 +60,11 @@ advance without uploading or retrying the duplicates.
 
 ## Autonomous scaling
 
-Do not raise a source above its currently proven unit tier merely because one
-large unit fills successfully. Observe at least 5–10 consecutive autonomous unit
-continuations before considering a controlled trial at the next tier, and require
-a longer record such as 50 consecutive autonomous continuations before calling a
-tier established or making it the default. Each qualifying continuation must
+Do not raise a source toward the 1,000-item ceiling merely because one large unit
+fills successfully. Observe at least 5–10 consecutive autonomous unit
+continuations before considering a controlled increase, and require a longer
+record such as 50 consecutive autonomous continuations before calling a size
+established or making it the default. Each qualifying continuation must
 stage the exact eligible survivors, quarantine individual duplicates, persist the
 checkpoint and accounting, and begin the next unit without an operator, monitor,
 or replacement process restarting it.
@@ -74,8 +75,8 @@ consecutive-autonomy streak. Reaching an observation threshold is evidence for
 evaluation, not an automatic upgrade: disk headroom, source yield, staging
 latency, dedup behavior, stage-to-live throughput, and absence of overlapping
 workers must also support the larger tier. Discovery frontiers may contain
-millions of documents, but the 10,000 ceiling applies to complete books packaged
-in one staging unit.
+millions of records, but the 1,000 ceiling applies to items packaged in one
+staging unit.
 
 ## Stage-to-live drainage
 

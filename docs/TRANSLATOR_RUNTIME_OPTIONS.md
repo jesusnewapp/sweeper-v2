@@ -180,4 +180,4 @@ publish concurrently or bypass live verification.
 5. Test separate translation staging with a no-live-write adapter.
 6. Rehearse the shared uploader handoff and exact deployment verification.
 7. Increase batch size only after measuring quality, throughput, storage, and
-   recovery behavior.
+   recovery behavior. The public item ceiling is 1,000 per batch.

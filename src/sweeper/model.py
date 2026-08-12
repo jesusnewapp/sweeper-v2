@@ -29,6 +29,7 @@ class Source:
     enabled: bool = True
     requests_per_second: float = 1.0
     workers: int = 1
+    batch_size: int = 50
     headers: Dict[str, str] = field(default_factory=dict)
     continuation_manifests: List[str] = field(default_factory=list)
     target_items: int = 0

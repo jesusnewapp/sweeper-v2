@@ -86,6 +86,21 @@ class SweeperV2Test(unittest.TestCase):
             self.assertEqual(2, config.major_slots)
             self.assertEqual(2, config.minor_slots)
             self.assertEqual(4, len(config.sources))
+            self.assertEqual([50, 100, 50, 50], [source.batch_size for source in config.sources])
+
+    def test_source_and_translation_batch_sizes_are_operator_selected_but_capped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = {"workspace": "data", "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 1}, "policy": {},
+                "sources": [{"id": "one", "slot": 1, "lane": "major",
+                    "manifest": "items.jsonl", "batch_size": 1000}]}
+            path = root / "sweeper.json"; path.write_text(json.dumps(base))
+            self.assertEqual(1000, load_config(path).sources[0].batch_size)
+            base["sources"][0]["batch_size"] = 1001
+            path.write_text(json.dumps(base))
+            with self.assertRaisesRegex(ValueError, "between 1 and 1,000"):
+                load_config(path)
 
     def test_light_layout_can_expand_to_six(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -193,6 +208,31 @@ class SweeperV2Test(unittest.TestCase):
             second = run(config)
             self.assertEqual({"accepted": 1, "duplicate": 1}, first["counts"])
             self.assertEqual(first["counts"], second["counts"])
+
+    def test_source_batch_size_caps_new_acceptances_and_records_continuation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); manifest = root / "items.jsonl"; rows = []
+            for number in range(3):
+                payload = root / f"payload-{number}.txt"
+                payload.write_text(f"distinct record {number}")
+                rows.append({"id": str(number), "url": payload.as_uri(), "language": "en",
+                    "license": "CC0-1.0", "media_type": "text/plain"})
+            manifest.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+            config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 1},
+                "policy": {"languages": ["en"], "licenses": ["CC0-1.0"],
+                    "media_types": ["text/plain"]},
+                "sources": [{"id": "local", "slot": 1, "lane": "major",
+                    "manifest": "items.jsonl", "batch_size": 2,
+                    "requests_per_second": 10.0}]}))
+            first = run(load_config(config_path)); second = run(load_config(config_path))
+            self.assertEqual(2, first["counts"]["accepted"])
+            self.assertEqual(3, second["counts"]["accepted"])
+            events = activity_report(root / "data", 20)["recent"]
+            completed = [row for row in events if row["event"] == "source-batch-complete"]
+            self.assertEqual([2, 1], [row["detail"]["acceptedThisBatch"] for row in completed])
 
     def test_daemon_once_records_health(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -207,13 +207,23 @@ page or cursor window advances inside the same coordinator; it is not treated as
 a completed source or a reason to wait for an external restart.
 
 Track successful automatic advances separately from manual restarts,
-monitor-triggered recoveries, and crash recoveries. Large unit sizes are earned
-by repeated autonomous progression and end-to-end queue capacity, not by a single
-successful fill. For complete books, use controlled tiers of 1,000, 2,500, 5,000,
-and at most 10,000 per staging unit. A 5–10 continuation observation window may
-justify a controlled next-tier trial; require a longer record, such as 50
-consecutive autonomous advances, before calling a tier established or making it
-the default. Discovery inventories may be much larger than publication units.
+monitor-triggered recoveries, and crash recoveries. Operators select each
+source's `batch_size` explicitly; 50 and 100 are recommended starting choices.
+The public runtime enforces a hard maximum of 1,000 accepted items per source
+batch, regardless of whether those items are books, documents, media, datasets,
+software, or another configured artifact class. Repeated autonomous progression and end-to-end queue
+capacity justify moving toward that ceiling; a single successful fill does not.
+Discovery inventories may be much larger than acquisition or staging batches.
+
+```json
+{"id":"major-one","lane":"major","slot":1,"manifest":"items.jsonl","batch_size":100}
+```
+
+Change `batch_size` between completed batches, then restart or reload the
+coordinator from its durable checkpoint. Never change the membership target of
+an already-open batch. Main V2 records `source-batch-start` and
+`source-batch-complete` activity events so operators can distinguish automatic
+advances from manual or monitor-triggered recovery.
 
 Staging and live publication remain separate. A high-throughput acquisition fleet
 needs a continuously draining, serialized stage-to-live writer that validates

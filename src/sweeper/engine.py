@@ -170,6 +170,12 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
         # accepted membership, or an in-progress manifest checkpoint.
         ordered = prioritized_sources(config, state)
         for source in ordered:
+            accepted_at_cycle_start = state.accepted_count(source.id)
+            batch_complete = False
+            activity_record(config.workspace, "source-batch-start", lane=source.id,
+                status="working", detail={"batchSize": source.batch_size,
+                    "acceptedAtStart": accepted_at_cycle_start,
+                    "productionWriterTouched": False})
             base_delay = 1.0 / source.requests_per_second
             active_delay = base_delay
             if progress:
@@ -186,6 +192,9 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                                       "continuationManifest": manifest_index})
                         retrieve(item, active_source, config, state)
                         outcome = state.status(item.source_id, item.item_id)
+                        accepted_this_batch = (
+                            state.accepted_count(source.id) - accepted_at_cycle_start
+                        )
                         if outcome == "failed":
                             active_delay = min(base_delay * 8, active_delay * 1.5)
                             mode = "exhale-reduce-pressure"
@@ -197,6 +206,9 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                             "integrityGatesChanged": False})
                         if len(breathing) > 100: del breathing[:-100]
                         time.sleep(active_delay)
+                        if accepted_this_batch >= source.batch_size:
+                            batch_complete = True
+                            break
                 except Exception as error:
                     source_errors.append({"source": source.id, "manifest": manifest,
                         "error": f"{type(error).__name__}: {error}"})
@@ -206,9 +218,20 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                         progress({"phase": "source-error", "source": source.id,
                                   "manifest": manifest, "error": source_errors[-1]["error"]})
                     continue
+                if batch_complete:
+                    break
                 if source.target_items and state.accepted_count(source.id) >= source.target_items:
                     break
             accepted = state.accepted_count(source.id)
+            accepted_this_batch = accepted - accepted_at_cycle_start
+            activity_record(config.workspace, "source-batch-complete", lane=source.id,
+                status="advance-next-batch" if batch_complete else "source-frontier-reached",
+                detail={"batchSize": source.batch_size,
+                    "acceptedThisBatch": accepted_this_batch,
+                    "acceptedTotal": accepted,
+                    "batchFilled": batch_complete,
+                    "nextAction": "immediate-next-cycle-from-checkpoint",
+                    "productionWriterTouched": False})
             if source.target_items and accepted < source.target_items:
                 continuation.append({"source": source.id, "accepted": accepted,
                     "target": source.target_items, "deficit": source.target_items - accepted,
@@ -251,6 +274,7 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
             "accepted",config.nurture_threshold) if accepted_items else {"active":False,"members":0,
                 "threshold":config.nurture_threshold}
         result={"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+                "batchCeilingItems": 1_000,
                 "sweeperBlocked": False,
                 "failureDisposition": "bookkeep-item-or-source-and-continue",
                 "sourceErrors": source_errors, "continuation": continuation,
