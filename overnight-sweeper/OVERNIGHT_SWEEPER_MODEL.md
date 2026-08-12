@@ -31,6 +31,11 @@ quality, provenance, hashing, deduplication, or continuation rules.
   internal continuation event, not a successful coordinator exit. Persist the
   next frontier, retain the same incomplete unit and checkpoint, and continue
   immediately. Exit only when the source frontier itself is proven exhausted.
+- Use this direct continuation state machine for simple source models. A
+  separate pivot advisor is optional and is not required for deterministic
+  `checkpoint -> exhaust set -> advance set -> stage survivors -> next unit`
+  operation. Design pivot pools at the beginning of future complex systems
+  whose workers have several materially different safe recovery routes.
 - Bind a proven-exhausted frozen manifest to its exact fingerprint, retire it
   from active rotation, and skip it on restart. If a local manifest's bytes
   change, reactivate it automatically. Source adapters may discard generated
@@ -142,6 +147,11 @@ staging throughput cannot silently outrun verified publication capacity.
 - Preserve local artifacts until the operator's separate promotion
   workflow establishes its required remote evidence or explicitly authorizes a
   different cleanup boundary.
+- If independent promotion validation requires raw source evidence that was
+  evicted after staging, deterministically rehydrate only the exact unit from
+  its recorded source URLs, verify every recorded source hash, validate and
+  live-verify under the serialized writer, then remove only those restored
+  source files. Missing or mismatched evidence fails closed.
 - After an exact staging receipt and remote object-count/binding check succeed,
   a deployment may evict only re-downloadable source caches belonging to that
   completed unit. Preserve manuscripts, catalogs, hashes, receipts, checkpoints,

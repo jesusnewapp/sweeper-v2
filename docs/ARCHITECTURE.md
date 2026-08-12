@@ -21,6 +21,13 @@ whole source turns. It cannot alter item eligibility or an active manifest
 checkpoint. Its JSON output is advisory, so adapters may select a safer local
 alternative and record their reason.
 
+Simple manifest workers do not depend on that advisor. Their deterministic
+continuation path retires an exhausted set by fingerprint, advances the next
+configured set immediately, preserves a partial survivor handoff, and starts
+the next unit from durable item state. Pivot pools are most useful when a more
+complex system has multiple genuinely different recovery modes; define those
+pools before deployment rather than inventing unsafe actions during a stall.
+
 The separate Pivot Enforcer watches durable source and translation counts. An
 unchanged lane with pending work becomes overdue after exactly 60 seconds. The
 enforcer records and exposes the obligation but never selects a pivot; adapters

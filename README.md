@@ -306,6 +306,18 @@ fleet. It never calls a partially productive
 source a total failure, and it never converts an unreviewed staging item into a
 live item merely to satisfy a target.
 
+For simple source workers, continuation is deterministic and does not require
+the optional pivot advisor. Exhausting one configured manifest records its exact
+fingerprint and immediately advances to the next manifest. The cycle reports
+`frontierAdvances` and `batchTransitions`, including survivor count, close
+reason, next frontier, and whether the source itself is truly exhausted. Valid
+partial batches are handed to staging; an empty or duplicate-only set is
+bookkept and advanced instead of stopping the worker.
+
+For more complex software, define a bounded pool of safe pivots during initial
+design. Pivot choices must preserve checkpoints and accepted artifacts and may
+never relax rights, integrity, review, deduplication, or writer controls.
+
 The built-in pool currently contains 24 operations spanning checkpoint resume,
 manifest/cursor advancement, source discovery and rotation, cache reuse,
 pressure changes, review retry, per-item quarantine, survivor rebinding,

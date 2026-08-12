@@ -51,6 +51,22 @@ class FrontierRetirement:
         entry = self.entries.get(self.key(source_id, location), {})
         return entry.get("fingerprint") == fingerprint(location)
 
+    def rotation_status(self, source_id: str, locations: list[str]) -> dict:
+        """Describe the next usable set without treating one empty set as a stop."""
+        rows = [
+            {"index": index, "location": location,
+             "retired": self.is_retired(source_id, location)}
+            for index, location in enumerate(locations)
+        ]
+        active = [row for row in rows if not row["retired"]]
+        return {
+            "configuredFrontiers": len(rows),
+            "retiredFrontiers": len(rows) - len(active),
+            "nextFrontierIndex": active[0]["index"] if active else None,
+            "nextFrontier": active[0]["location"] if active else None,
+            "sourceFrontierExhausted": bool(rows) and not active,
+        }
+
     def retire(self, source_id: str, location: str) -> dict:
         entry = {
             "source": source_id,
