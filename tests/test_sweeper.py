@@ -215,6 +215,8 @@ class SweeperV2Test(unittest.TestCase):
                     {"id": "good", "slot": 2, "lane": "major", "manifest": "good.jsonl"}]}))
             result = run(load_config(config_path))
             self.assertEqual(1, result["counts"]["accepted"])
+            self.assertFalse(result["sweeperBlocked"])
+            self.assertEqual("bookkeep-item-or-source-and-continue", result["failureDisposition"])
             self.assertEqual("broken", result["sourceErrors"][0]["source"])
             self.assertTrue(Path(result["forecastHistory"]).exists())
 

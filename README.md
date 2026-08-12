@@ -180,6 +180,17 @@ or deployment verification. Translation uses the same rule: validated
 translations that the stager confirms advance, while unconfirmed members are
 bookkept as individual failures.
 
+### Sweepers never remain blocked
+
+A failed item is bookkept and quarantined, deferred, or rejected. A failed or
+exhausted source is bookkept and removed from active rotation or scheduled for
+a later retry. Valid survivors remain nurtured and continue. The daemon then
+resumes, retries, changes method, rotates source, or selects another safe pivot.
+Accordingly, `sweeperBlocked` is always false in cycle results: a failure is a
+recorded disposition plus a continuation decision, never a terminal sweeper
+state. External publication may wait for credentials or a serialized writer,
+but acquisition, preparation, translation, and other lanes continue.
+
 ## The boat model
 
 Think of Sweeper as a small, durable research boat. The two major sweepers handle

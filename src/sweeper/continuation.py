@@ -231,7 +231,10 @@ def build_plan(config: Config, state: State) -> dict:
             "quality": ["authorization", "rights", "policy", "identity", "hashing",
                         "deduplication", "review", "single-live-writer"],
             "continuation": "seek another safe useful action until explicitly deactivated or temporarily impossible",
+            "neverBlocked": "bookkeep and remove the failed item or source, then choose the next safe action",
         },
+        "blockingStateAllowed": False,
+        "failureLifecycle": ["bookkeep", "quarantine-or-defer", "preserve-survivors", "continue-or-pivot"],
         "invariants": ["quality", "continuation"],
     }
 

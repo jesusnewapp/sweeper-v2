@@ -247,6 +247,8 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
             "accepted",config.nurture_threshold) if accepted_items else {"active":False,"members":0,
                 "threshold":config.nurture_threshold}
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+                "sweeperBlocked": False,
+                "failureDisposition": "bookkeep-item-or-source-and-continue",
                 "sourceErrors": source_errors, "continuation": continuation,
                 "continuationRequired": bool(continuation), "breathing": breathing,
                 "continuationPlan": str(plan_path), "forecastHistory": str(history_path),
