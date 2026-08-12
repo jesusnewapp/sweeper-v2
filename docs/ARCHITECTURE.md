@@ -1,6 +1,6 @@
 # Architecture
 
-Sweeper V2 separates four responsibilities:
+Web Sweeper separates four responsibilities:
 
 1. **Manifests** declare stable source identities and download locations.
 2. **Policy** performs inexpensive metadata filtering before retrieval.

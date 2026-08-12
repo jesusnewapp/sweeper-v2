@@ -1,10 +1,10 @@
-# Sweeper V2
+# Web Sweeper
 
 <p align="center">
-  <img src="assets/sweeper-logo.png" alt="Sweeper logo: a cybernetic sweeper organizing a stream of data" width="520">
+  <img src="assets/sweeper-logo.png" alt="Web Sweeper logo: a cybernetic sweeper organizing a stream of data" width="520">
 </p>
 
-Sweeper V2 is a lightweight, source-neutral framework for continuously acquiring and
+Web Sweeper is a lightweight, source-neutral framework for continuously acquiring and
 preserving large information collections with reproducible provenance. It can
 be configured for institutional archives, law, science, research datasets,
 books, public records, media, structured directories, or other authorized
@@ -35,7 +35,7 @@ and an expected checksum. Operators can select either preset, replace its manife
 and source slots, and retain the same continuation, hashing, deduplication, staging,
 and optional reviewer workflow.
 
-**Sweeper V2 was created by Christian Cassarly through Jesus New OS and shared
+**Web Sweeper was created by Christian Cassarly through Jesus New OS and shared
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**
 
@@ -62,14 +62,14 @@ publication boundary. Sweeper remains vendor-neutral and does not require Codex,
 but the two can provide a particularly smooth complementary experience for an
 operator supervising large, long-running acquisition programs.
 
-Sweeper V2 is not tied to Codex, a particular library, Firebase, a subject, or
+Web Sweeper is not tied to Codex, a particular library, Firebase, a subject, or
 an AI vendor. It downloads only sources that the operator configures and is
 intentionally fail-closed when required identity, rights, or policy metadata is
 missing.
 
 ## What the program does
 
-Sweeper V2 moves authorized information from source manifests into a local,
+Web Sweeper moves authorized information from source manifests into a local,
 content-addressed archive:
 
 1. Read stable item identities and download URLs.
@@ -174,7 +174,7 @@ projects reusable without silently destroying current work.
 
 ## Current adoption model
 
-Sweeper V2 uses a **two-major plus two-light default fleet**. Every source keeps
+Web Sweeper uses a **two-major plus two-light default fleet**. Every source keeps
 an independent checkpoint. A lightweight continuation advisor observes durable
 yield, retryable failures, target deficit, lane occupancy, and the positions of
 other sources. It scores a reusable continuation pool and recommends the best
@@ -409,7 +409,7 @@ generated translation collection name is deliberately a `REPLACE_WITH_...`
 placeholder, and enabling translation fails closed until it is changed. No
 Codex Firebase destination or credential is included in the public package.
 
-Sweeper V2 recognizes English, Spanish, French, German, Italian, Portuguese,
+Web Sweeper recognizes English, Spanish, French, German, Italian, Portuguese,
 Dutch, Russian, Greek, and Latin. Translation engines are deliberately external
 and local/configurable so the core stays lightweight and does not send data to
 an AI service by default.
@@ -552,7 +552,7 @@ Successful deletion is recorded in `dock-cleanup.json` and bound to the exact
 
 Phone numbers and email addresses may be processed only when the operator is
 authorized to acquire and use those records—for example, a consented internal
-directory or a lawfully published government contact dataset. Sweeper V2 is not
+directory or a lawfully published government contact dataset. Web Sweeper is not
 designed for personal-contact harvesting, unsolicited marketing, doxxing, or
 circumventing privacy and access controls.
 
@@ -569,7 +569,7 @@ return JSON:
 
 This allows an operator to connect ChatGPT through their own approved API
 client, another hosted model, a local model, or a deterministic institutional
-validator. Sweeper V2 does not send information to an AI service by default.
+validator. Web Sweeper does not send information to an AI service by default.
 Never send confidential, personal, regulated, or contract-restricted content
 to a model without the required authorization and data controls.
 
@@ -578,7 +578,7 @@ to a model without the required authorization and data controls.
 The operator is responsible for permission, copyright, privacy, records rules,
 robots guidance, provider terms, rate limits, retention, and security. Use a
 truthful contact-bearing user agent. Prefer official APIs and bulk exports.
-Never use Sweeper V2 to bypass authentication, paywalls, technical controls, or
+Never use Web Sweeper to bypass authentication, paywalls, technical controls, or
 access restrictions.
 
 See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
@@ -606,7 +606,7 @@ Apache License 2.0. Attribution is appreciated; see [NOTICE](NOTICE).
 ## Creator
 
 Christian Cassarly is a Codex-assisted software developer and operating-system
-architect for Jesus New OS. He created Sweeper V2 as a public
+architect for Jesus New OS. He created Web Sweeper as a public
 technology-sharing project: a small, adaptable foundation people can configure
 for responsible large-scale information acquisition without tying the tool to
 one subject, institution, repository, or model provider.
