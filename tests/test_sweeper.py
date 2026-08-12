@@ -66,6 +66,24 @@ class SweeperV2Test(unittest.TestCase):
         reason = policy_reason(item, Policy(languages=["en"], licenses=["CC0-1.0"]))
         self.assertEqual("missing-license", reason)
 
+    def test_media_family_policy_and_rights_evidence(self):
+        policy = Policy(languages=["en"], licenses=["CC0-1.0"],
+                        media_types=["audio/*", "video/*"],
+                        artifact_classes=["music", "video"],
+                        require_rights_evidence=True)
+        missing = Candidate("s", "a", "https://example.test/a.flac", language="en",
+                            license="CC0-1.0", media_type="audio/flac",
+                            artifact_class="music")
+        self.assertEqual("missing-rights-evidence", policy_reason(missing, policy))
+        audio = Candidate("s", "a", "https://example.test/a.flac", language="en",
+                          license="CC0-1.0", rights_evidence_url="https://example.test/rights",
+                          media_type="audio/flac", artifact_class="music")
+        self.assertEqual("", policy_reason(audio, policy))
+        comic = Candidate("s", "c", "https://example.test/c.cbz", language="en",
+                          license="CC0-1.0", rights_evidence_url="https://example.test/rights",
+                          media_type="application/vnd.comicbook+zip", artifact_class="comic")
+        self.assertEqual("media-type-not-allowed", policy_reason(comic, policy))
+
     def test_content_hash_dedup_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             state = State(Path(directory) / "state.sqlite3")

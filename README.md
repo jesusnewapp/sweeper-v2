@@ -7,6 +7,11 @@ books, public records, media, structured directories, or other authorized
 collections. The engine treats every acquisition unit as bytes plus provenance;
 it does not assume the unit is a book.
 
+Media is first-class: projects may acquire complete audio or music files,
+video, images, comics, maps, software, datasets, archives, models, or mixed
+collections. MIME-family rules such as `audio/*`, `video/*`, `image/*`, and
+`text/*` avoid hard-coding every container while keeping policy explicit.
+
 **Sweeper V2 was created by Christian Cassarly through Jesus New OS and shared
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**
@@ -22,7 +27,7 @@ Sweeper V2 moves authorized information from source manifests into a local,
 content-addressed archive:
 
 1. Read stable item identities and download URLs.
-2. Apply the configured language, license, format, data-class, artifact-class,
+2. Apply the configured language, license, rights evidence, format, data-class, artifact-class,
    and size policy before acquisition.
 3. Download candidates at the source's configured request rate.
 4. Stream every object through SHA-256 hashing without loading the entire object
@@ -288,15 +293,18 @@ Each source points to a JSON Lines manifest. Every line represents one
 acquisition unit:
 
 ```json
-{"id":"record-001","url":"https://example.edu/files/record-001.xml","title":"Record 001","language":"en","license":"CC0-1.0","media_type":"application/xml","metadata":{"collection":"example"}}
+{"id":"record-001","url":"https://example.edu/files/record-001.flac","title":"Record 001","language":"en","license":"CC0-1.0","rights_evidence_url":"https://example.edu/rights/record-001","media_type":"audio/flac","artifact_class":"music","metadata":{"collection":"example"}}
 ```
 
 Manifest records require stable `id` and `url` fields. Optional
-`artifact_class` values can describe documents, datasets, archives, media,
-public records, or structured directories. `data_class` lets an institution
+`artifact_class` values can describe documents, datasets, archives, audio,
+music, video, images, comics, software, maps, models, public records, or other
+units. `data_class` lets an institution
 separate open-public and institution-authorized material. Policy can allowlist
 language, license, media type, artifact class, data class, and byte bounds. The
-downloaded bytes are hashed during streaming and stored once by SHA-256.
+downloaded bytes are hashed during streaming and stored once by SHA-256. Set
+`require_rights_evidence` to `true` to reject an item before download unless it
+has an item-specific license, permission, or public-domain evidence URL.
 
 ## Minimal configuration
 
@@ -308,12 +316,14 @@ downloaded bytes are hashed during streaming and stored once by SHA-256.
   "policy": {
     "languages": ["en"],
     "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
-    "media_types": ["text/plain", "text/html", "application/json"],
+    "media_types": ["text/*", "audio/*", "video/*", "image/*", "application/json", "application/zip", "application/vnd.comicbook+zip"],
+    "artifact_classes": ["document", "dataset", "archive", "audio", "music", "video", "image", "comic", "software", "map", "model", "other"],
     "data_classes": ["open-public"],
     "minimum_bytes": 1,
     "maximum_bytes": 1073741824,
     "require_language": true,
-    "require_license": true
+    "require_license": true,
+    "require_rights_evidence": true
   },
   "sources": [{
     "id": "example-archive",
@@ -437,11 +447,12 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.7.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.8.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.
-This release adds saved projects and goals, background forecasting and source
+This release adds MIME-family media acquisition, item-level rights-evidence
+gates, access-required skipping, media-aware pivots, saved projects and goals, background forecasting and source
 intelligence, advisory operator assistance, translation staging with a shared
 uploader handoff, and the standalone Goodies staged/live index and UI starter.
 It retains fleet-aware continuation scoring, source reordering between whole

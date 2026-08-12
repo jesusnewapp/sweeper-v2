@@ -12,6 +12,9 @@ DEFAULT_CATEGORIES = (
     "open public archives", "public domain books complete text",
     "open government document repository", "open scientific datasets",
     "open legal document archive", "open educational resources",
+    "public domain music audio downloads", "open licensed video archives",
+    "public domain image collections", "open access comics downloads",
+    "open geospatial data archives", "open research software archives",
 )
 
 

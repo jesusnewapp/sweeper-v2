@@ -13,6 +13,7 @@ class Candidate:
     title: str = ""
     language: str = ""
     license: str = ""
+    rights_evidence_url: str = ""
     media_type: str = "application/octet-stream"
     artifact_class: str = "unspecified"
     data_class: str = "unspecified"
@@ -47,6 +48,7 @@ class Policy:
     maximum_bytes: Optional[int] = None
     require_language: bool = True
     require_license: bool = True
+    require_rights_evidence: bool = False
     reviewer_command: List[str] = field(default_factory=list)
 
 

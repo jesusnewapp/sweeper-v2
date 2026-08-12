@@ -31,6 +31,21 @@ permission. Operators must independently establish authorization, particularly
 for structured contact records, student records, health information, or other
 regulated data.
 
+## Universal media and rights
+
+The core stores opaque byte streams, so the acquisition path works for
+documents, datasets, audio, music, video, images, comics, maps, software,
+archives, models, and future media. It supports exact MIME values and safe MIME
+families such as `audio/*`. Content-specific validation—duration, codec,
+dimensions, comic page order, archive membership, or dataset schema—belongs in
+the external reviewer and remains bound to the staged object's SHA-256.
+
+Public manifests should provide both an exact license and
+`rights_evidence_url`. When rights evidence is required, missing evidence is
+rejected before retrieval. HTTP 401, 403, and 407 responses are recorded as
+access-required rejections; the engine moves on and never attempts sign-in or
+access-control circumvention.
+
 An external reviewer command is the only AI integration surface. This keeps
 model choice, credentials, data governance, and prompts under the institution's
 control. A reviewer rejection is recorded; malformed output or a nonzero exit

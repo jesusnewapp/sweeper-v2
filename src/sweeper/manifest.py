@@ -36,6 +36,7 @@ def candidates(source: Source, user_agent: str) -> Iterable[Candidate]:
                 title=str(item.get("title", "")),
                 language=str(item.get("language", "")),
                 license=str(item.get("license", "")),
+                rights_evidence_url=str(item.get("rights_evidence_url", "")),
                 media_type=str(item.get("media_type", "application/octet-stream")),
                 artifact_class=str(item.get("artifact_class", "unspecified")),
                 data_class=str(item.get("data_class", "unspecified")),

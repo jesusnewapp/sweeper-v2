@@ -33,6 +33,20 @@ DEFAULT_POOL = (
     "recover-stale-writer-lease",
     "advance-next-ready-unit",
     "cleanup-live-verified-staging",
+    "switch-compatible-media-representation",
+    "advance-media-collection-cursor",
+    "refresh-expired-download-location",
+    "resume-range-capable-transfer",
+    "reduce-large-object-concurrency",
+    "verify-container-and-codec-metadata",
+    "verify-comic-page-order-and-completeness",
+    "verify-audio-duration-and-container",
+    "verify-video-duration-and-container",
+    "quarantine-unsupported-media-variant",
+    "recheck-item-rights-evidence",
+    "rotate-to-rights-compatible-collection",
+    "skip-authentication-required-source",
+    "advance-next-public-download-manifest",
 )
 
 
@@ -76,6 +90,17 @@ def _score(action: str, source: Source, counts: dict, peer_stages: dict) -> tupl
         score += 8; reasons.append("available only after proving the prior owner is absent")
     if action == "cleanup-live-verified-staging":
         score += 5; reasons.append("eligible only after exact live verification")
+    if action in {"resume-range-capable-transfer", "reduce-large-object-concurrency"} and failed:
+        score += 18; reasons.append("large media transfer pressure can be reduced without losing the checkpoint")
+    if action in {"switch-compatible-media-representation", "quarantine-unsupported-media-variant"} and failed:
+        score += 17; reasons.append("keeps the work while pivoting away from a failed representation")
+    if action in {"verify-container-and-codec-metadata", "verify-comic-page-order-and-completeness",
+                  "verify-audio-duration-and-container", "verify-video-duration-and-container"} and accepted:
+        score += 10; reasons.append("adds media-specific validation before promotion")
+    if action in {"recheck-item-rights-evidence", "rotate-to-rights-compatible-collection"} and failed:
+        score += 22; reasons.append("rights uncertainty must be resolved or safely bypassed")
+    if action in {"skip-authentication-required-source", "advance-next-public-download-manifest"} and failed:
+        score += 24; reasons.append("access-controlled paths are skipped instead of retried or bypassed")
     return score, reasons
 
 

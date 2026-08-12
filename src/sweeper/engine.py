@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import urllib.error
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +32,13 @@ def policy_reason(item: Candidate, policy: Policy) -> str:
         return "missing-license"
     if policy.licenses and item.license.lower() not in {value.lower() for value in policy.licenses}:
         return "license-not-allowed"
-    if policy.media_types and item.media_type.lower() not in {value.lower() for value in policy.media_types}:
+    if policy.require_rights_evidence and not item.rights_evidence_url:
+        return "missing-rights-evidence"
+    allowed_media = {value.lower() for value in policy.media_types}
+    media_type = item.media_type.lower()
+    if allowed_media and not any(
+            rule == media_type or (rule.endswith("/*") and media_type.startswith(rule[:-1]))
+            for rule in allowed_media):
         return "media-type-not-allowed"
     if policy.artifact_classes and item.artifact_class.lower() not in {value.lower() for value in policy.artifact_classes}:
         return "artifact-class-not-allowed"
@@ -97,6 +104,11 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
                          size=size, local_path=str(destination))
             return
         state.record(**common, status="accepted", digest=hexdigest, size=size, local_path=str(destination))
+    except urllib.error.HTTPError as error:
+        if error.code in {401, 403, 407}:
+            state.record(**common, status="rejected", reason=f"access-required-http-{error.code}")
+        else:
+            state.record(**common, status="failed", reason=f"HTTPError:{error.code}")
     except Exception as error:
         state.record(**common, status="failed", reason=f"{type(error).__name__}:{error}")
     finally:
