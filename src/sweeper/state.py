@@ -67,6 +67,16 @@ class State:
                               (source_id,)).fetchone()
         return int(row[0]) if row else 0
 
+    def accepted_since(self, timestamp: str) -> int:
+        row = self.db.execute(
+            "SELECT COUNT(*) FROM items WHERE status='accepted' AND updated_at>=?", (timestamp,)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def observation_bounds(self) -> tuple[Optional[str], Optional[str]]:
+        row = self.db.execute("SELECT MIN(updated_at), MAX(updated_at) FROM items").fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
     def source_counts(self, source_id: str) -> dict:
         return {row[0]: int(row[1]) for row in self.db.execute(
             "SELECT status, COUNT(*) FROM items WHERE source_id=? GROUP BY status", (source_id,)

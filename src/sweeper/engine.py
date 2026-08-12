@@ -162,9 +162,36 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
         temporary = plan_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
         temporary.replace(plan_path)
+        history_path = config.workspace / "forecast-history.json"
+        try:
+            history = json.loads(history_path.read_text(encoding="utf-8")) if history_path.exists() else []
+            if not isinstance(history, list):
+                history = []
+        except (OSError, ValueError):
+            history = []
+        forecast = plan["project"]["forecast"]
+        snapshot = {
+            "calculatedAt": forecast["calculatedAt"],
+            "status": forecast["status"], "maturity": forecast["maturity"],
+            "observationDays": forecast["observationDays"],
+            "estimatedHighQualityEligibleItems": forecast["estimatedHighQualityEligibleItems"],
+            "estimatedDailyHighQualityItems": forecast["estimatedDailyHighQualityItems"],
+            "estimatedOverallGoalCoveragePercent": forecast["estimatedOverallGoalCoveragePercent"],
+            "estimatedDailyGoalCoveragePercent": forecast["estimatedDailyGoalCoveragePercent"],
+            "depletion": plan["sourceIntelligence"]["depletion"]["assessment"],
+        }
+        comparison = {key: value for key, value in snapshot.items() if key != "calculatedAt"}
+        previous = ({key: value for key, value in history[-1].items() if key != "calculatedAt"}
+                    if history else None)
+        if comparison != previous:
+            history.append(snapshot)
+            history = history[-365:]
+            history_tmp = history_path.with_suffix(".tmp")
+            history_tmp.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+            history_tmp.replace(history_path)
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
                 "sourceErrors": source_errors, "continuation": continuation,
                 "continuationRequired": bool(continuation), "breathing": breathing,
-                "continuationPlan": str(plan_path)}
+                "continuationPlan": str(plan_path), "forecastHistory": str(history_path)}
     finally:
         state.close()

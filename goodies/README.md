@@ -1,0 +1,31 @@
+# Goodies standalone staged/live indexer
+
+This optional tool builds a local full-text index for an operator's own staged
+and live records. It is not part of Sweeper acquisition and contains no Codex
+titles, private categories, backend identifiers, or credentials.
+
+Input is UTF-8 JSONL with operator-owned values such as `id`, `title`,
+`category`, `subjects`, `keywords`, `description`, `text`, and `metadata`.
+Only `id` and `title` are required. Supply an optional category file so records
+outside the operator's taxonomy fail closed.
+
+```bash
+python3 goodies/indexer.py build --database my-index.sqlite3 \
+  --input staged.jsonl --scope staged --categories my-categories.json
+python3 goodies/indexer.py build --database my-index.sqlite3 \
+  --input live.jsonl --scope live --categories my-categories.json
+python3 goodies/indexer.py search --database my-index.sqlite3 \
+  --query 'example phrase' --scope staged
+python3 goodies/indexer.py search --database my-index.sqlite3 \
+  --query 'example phrase' --scope live --category 'My Category'
+python3 goodies/indexer.py export --database my-index.sqlite3 \
+  --output goodies/ui/index.json
+```
+
+The index is incremental and content-hash aware: unchanged records are skipped,
+while changed records replace only their own `(scope,id)` entry. Staged and live
+records remain independently searchable even when they share an ID.
+
+The [`ui/`](ui/) folder is a dependency-free interface starter. Export the
+index to `ui/index.json`, serve the folder with any static web server, and adapt
+the colors, record links, fields, or backend integration to the project.

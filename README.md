@@ -36,6 +36,75 @@ Sweeper is an acquisition and preservation foundation. It does not grant
 rights, bypass access controls, infer permission, or publish into an external
 system automatically.
 
+An optional, standalone staged/live search utility is available in
+[`goodies/`](goodies/README.md). Operators supply their own records and categories.
+It is deliberately separate from sweeping and contains no Codex catalog data.
+
+## Reusable projects and collection goals
+
+Each configuration is a named project that can be saved and loaded later. A
+project preserves its workspace, fleet layout, source definitions, policies,
+and goals. For example:
+
+```json
+"project": {
+  "name": "Codex Project",
+  "overall_target_items": 1000000,
+  "daily_target_items": 3000
+}
+```
+
+Set either target to `0` for no numeric target. The maximum permitted overall or
+daily target is 100,000,000,000 items. Targets guide planning and progress
+reporting; they do not relax quality gates or guarantee that a source contains
+enough eligible material.
+
+Each source may report `estimated_eligible_items` and
+`estimated_daily_items`. The background Forecast Operator combines those
+high-quality estimates on every daemon cycle. `sweeper plan` reports estimated
+complete capacity, estimated daily capacity, progress achieved, and the
+percentage of the desired daily and overall goals the fleet can currently
+cover. Sources without enough evidence remain explicitly unknown; the operator
+never manufactures a favorable estimate and never forces a sweeper decision.
+
+The background Source Intelligence Operator reports active, queued, and
+potential sites with their categories, confidence, estimated capacity, and next
+evaluation. It also reasons about aggregate depletion using remaining eligible
+capacity, acceptance-yield trends, duplicate/rejection pressure, bounded-source
+completion, and newly discovered candidates. Its scope is always the configured
+and discovered aggregate landscape—it never falsely declares that the entire
+internet has been exhausted. Use `sweeper sources` for this operator view.
+
+Forecasting is deliberately gradual. The operator publishes a loose percentage
+early, reports its observation window, and labels it `preliminary-loose-estimate`.
+After at least 14 days of measured operation it may label the estimate mature;
+even then, percentages remain approximate because source inventories, overlap,
+rights, quality yield, and the wider web can change.
+Before sufficient evidence exists, it reports `still-calculating` plus an
+approximate number of days until the first loose estimate and the more mature
+estimate. The countdown is guidance, not a promise; sparse or changing sources
+can extend it.
+The number is intentionally dynamic. Every daemon cycle timestamps and
+recalculates the forecast, so estimates and percentages can rise or fall as the
+fleet learns more.
+
+The Operator may also watch and assist during pivots and aggregate exhaustion.
+It can rank potential next aggregates and explain the next evaluation required,
+but it is advisory only. The Sweeper owns the decision to request, accept,
+decline, defer, or replace the guidance. The Operator cannot activate a source,
+change a mode, or force a pivot. Set a source's `assistance_mode` to
+`sweeper-choice` (default) or `disabled`.
+
+```bash
+sweeper project-save --config sweeper.json --name "Codex Project"
+sweeper project-list
+sweeper project-load --name "Codex Project" --config codex-sweeper.json
+sweeper plan --config codex-sweeper.json
+```
+
+Loading refuses to overwrite an existing configuration. This keeps saved
+projects reusable without silently destroying current work.
+
 ## Current adoption model
 
 Sweeper V2 uses a **two-major plus two-light default fleet**. Every source keeps
@@ -53,6 +122,14 @@ and host capacity permit.
 The advisor changes operating pressure and whole-source order only.
 Authorization, rights, policy filters, hashes, deduplication, review, and guarded
 live promotion remain invariant.
+
+Sweeper itself remains free: no particular pivot, repivot, source, mode, batch
+shape, or ranked recommendation is forced. Its two mandatory operating
+invariants are **quality** and **continuation**. Quality determines what may
+advance. Continuation means it keeps seeking another safe, useful action until
+the operator explicitly deactivates it or no safe action is currently possible.
+Through those invariants, the fleet continually strives toward the largest,
+best-organized collection it can responsibly build.
 
 ## The boat model
 
@@ -165,6 +242,28 @@ the source contract, robots guidance, terms, rights, privacy boundary, stable
 identifiers, and respectful rate limits before adding a discovered site.
 
 ## Optional ten-language translation bridge
+
+Runtime choices, official download links, installation examples, licensing
+cautions, capacity planning, and the Translator Sweeper staging contract are in
+[docs/TRANSLATOR_RUNTIME_OPTIONS.md](docs/TRANSLATOR_RUNTIME_OPTIONS.md).
+
+The dedicated translation lane is operated with:
+
+```bash
+sweeper translation-status --config sweeper.json
+sweeper translation-queue --config sweeper.json --target-language es
+sweeper translation-run --config sweeper.json --target-language es
+```
+
+After exact language validation and translation-staging confirmation,
+`translation-run` writes a shared-uploader handoff and immediately queues the
+next available translation batch. It never acquires or duplicates the live
+writer itself.
+
+All public staging and live destinations are operator-supplied adapters. The
+generated translation collection name is deliberately a `REPLACE_WITH_...`
+placeholder, and enabling translation fails closed until it is changed. No
+Codex Firebase destination or credential is included in the public package.
 
 Sweeper V2 recognizes English, Spanish, French, German, Italian, Portuguese,
 Dutch, Russian, Greek, and Latin. Translation engines are deliberately external
@@ -338,12 +437,15 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.6.1 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.7.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.
-This release adds fleet-aware continuation scoring, advisory source reordering
-between whole source turns, explicit breathing state, and `sweeper plan`.
+This release adds saved projects and goals, background forecasting and source
+intelligence, advisory operator assistance, translation staging with a shared
+uploader handoff, and the standalone Goodies staged/live index and UI starter.
+It retains fleet-aware continuation scoring, source reordering between whole
+source turns, explicit breathing state, and `sweeper plan`.
 Provider-specific adapters and export targets
 belong in separate extensions so the core remains small and auditable.
 
@@ -353,9 +455,10 @@ Apache License 2.0. Attribution is appreciated; see [NOTICE](NOTICE).
 
 ## Creator
 
-Christian Cassarly created Sweeper V2 as a public technology-sharing project
-through Jesus New OS: a small, adaptable foundation people can configure for
-responsible large-scale information acquisition without tying the tool to one
-subject, institution, repository, or model provider.
+Christian Cassarly is a Codex-assisted software developer and operating-system
+architect for Jesus New OS. He created Sweeper V2 as a public
+technology-sharing project: a small, adaptable foundation people can configure
+for responsible large-scale information acquisition without tying the tool to
+one subject, institution, repository, or model provider.
 
 Explore **[Jesus New OS on the Apple App Store](https://apps.apple.com/us/app/jesus-new-os/id6752420337)**.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +44,7 @@ def translate_file(input_path: Path, output_path: Path, source: str, target: str
     source_bytes = input_path.read_bytes()
     request = {"source": source, "target": target,
                "text": source_bytes.decode("utf-8"), "source_sha256": hashlib.sha256(source_bytes).hexdigest()}
-    result = subprocess.run(engine.split(), input=json.dumps(request), text=True,
+    result = subprocess.run(shlex.split(engine), input=json.dumps(request), text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if result.returncode:
         raise ValueError(f"translation engine failed: {result.stderr[-500:]}")

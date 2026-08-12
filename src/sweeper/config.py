@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .model import Config, Policy, Source
+from .model import Config, Policy, Source, Translation
+
+
+MAX_PROJECT_TARGET = 100_000_000_000
 
 
 def load_config(path: Path) -> Config:
@@ -27,18 +30,37 @@ def load_config(path: Path) -> Config:
     config = Config(
         workspace=(path.parent / raw.get("workspace", "./sweeper-data")).resolve(),
         user_agent=str(raw.get("user_agent", "Institutional-Sweeper/0.1 (+contact-required)")),
+        project_name=str(raw.get("project", {}).get("name", path.stem)),
+        overall_target_items=int(raw.get("project", {}).get("overall_target_items", 0)),
+        daily_target_items=int(raw.get("project", {}).get("daily_target_items", 0)),
         major_slots=int(layout.get("major_slots", 2)),
         minor_slots=int(layout.get("minor_slots", 2)),
         sources=sources,
         policy=Policy(**raw.get("policy", {})),
+        translation=Translation(**raw.get("translation", {})),
     )
     validate_config(config)
     return config
 
 
 def validate_config(config: Config) -> None:
+    if not config.project_name.strip():
+        raise ValueError("project name cannot be empty")
+    for label, value in (("overall target", config.overall_target_items),
+                         ("daily target", config.daily_target_items)):
+        if value < 0 or value > MAX_PROJECT_TARGET:
+            raise ValueError(f"{label} must be between 0 and {MAX_PROJECT_TARGET:,}")
     if config.major_slots != 2 or not 1 <= config.minor_slots <= 6:
         raise ValueError("Sweeper requires two major slots and between one and six light slots")
+    if not 1 <= config.translation.batch_size <= 10_000:
+        raise ValueError("translation batch size must be between 1 and 10,000")
+    if not config.translation.staging_collection.strip():
+        raise ValueError("translation staging collection cannot be empty")
+    if config.translation.enabled and config.translation.staging_collection.startswith("REPLACE_WITH_"):
+        raise ValueError("replace the translation staging collection placeholder before enabling translation")
+    from .translation import LANGUAGES
+    if any(language not in LANGUAGES for language in config.translation.target_languages):
+        raise ValueError("translation target language is unsupported")
     if not config.user_agent or "contact-required" in config.user_agent:
         raise ValueError("set a truthful user_agent containing institutional contact information")
     ids = [source.id for source in config.sources]
@@ -57,5 +79,11 @@ def validate_config(config: Config) -> None:
             raise ValueError(f"invalid request rate for {source.id}")
         if source.target_items < 0:
             raise ValueError(f"target items cannot be negative for {source.id}")
+        if source.estimated_eligible_items < 0 or source.estimated_eligible_items > MAX_PROJECT_TARGET:
+            raise ValueError(f"estimated eligible items out of range for {source.id}")
+        if source.estimated_daily_items < 0 or source.estimated_daily_items > MAX_PROJECT_TARGET:
+            raise ValueError(f"estimated daily items out of range for {source.id}")
+        if source.assistance_mode not in {"sweeper-choice", "disabled"}:
+            raise ValueError(f"invalid assistance mode for {source.id}")
         if len(source.continuation_manifests) > 1000:
             raise ValueError(f"continuation manifest pool is too large for {source.id}")

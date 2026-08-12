@@ -31,6 +31,9 @@ class Source:
     headers: Dict[str, str] = field(default_factory=dict)
     continuation_manifests: List[str] = field(default_factory=list)
     target_items: int = 0
+    estimated_eligible_items: int = 0
+    estimated_daily_items: int = 0
+    assistance_mode: str = "sweeper-choice"
 
 
 @dataclass
@@ -48,10 +51,25 @@ class Policy:
 
 
 @dataclass
+class Translation:
+    enabled: bool = False
+    batch_size: int = 50
+    staging_collection: str = "REPLACE_WITH_YOUR_TRANSLATION_STAGING_COLLECTION"
+    target_languages: List[str] = field(default_factory=list)
+    notifier_command: List[str] = field(default_factory=list)
+    validator_command: List[str] = field(default_factory=list)
+    stager_command: List[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     workspace: Path
     user_agent: str
+    project_name: str
+    overall_target_items: int
+    daily_target_items: int
     major_slots: int
     minor_slots: int
     sources: List[Source]
     policy: Policy
+    translation: Translation

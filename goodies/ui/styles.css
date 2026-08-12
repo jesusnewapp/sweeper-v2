@@ -1,0 +1,10 @@
+:root{color-scheme:light dark;--bg:#f4f2eb;--panel:#fffdf7;--text:#1f2923;--muted:#657068;--line:#d8d8cd;--accent:#176b52}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif}
+main{width:min(980px,calc(100% - 32px));margin:48px auto}.eyebrow{color:var(--accent);font-size:.75rem;font-weight:800;letter-spacing:.14em}
+h1{font-size:clamp(2rem,6vw,4rem);line-height:1;margin:.2em 0}.controls{display:grid;grid-template-columns:2fr 1fr auto;gap:12px;align-items:end;margin:32px 0}
+label{display:grid;gap:6px;font-weight:700}input,select,button{font:inherit;border:1px solid var(--line);border-radius:10px;padding:11px;background:var(--panel);color:var(--text)}
+.tabs{display:flex;gap:6px}.tabs button[aria-pressed=true]{background:var(--accent);color:white;border-color:var(--accent)}
+.summary{color:var(--muted)}.results{display:grid;gap:10px}.record{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.record h2{font-size:1.05rem;margin:0 0 6px}.meta{display:flex;gap:8px;color:var(--muted);font-size:.85rem}.badge{text-transform:uppercase;font-weight:800;letter-spacing:.06em}
+@media(max-width:720px){main{margin:24px auto}.controls{grid-template-columns:1fr}.tabs button{flex:1}}
+@media(prefers-color-scheme:dark){:root{--bg:#111713;--panel:#18201b;--text:#edf4ef;--muted:#a8b4ac;--line:#344139;--accent:#52c89b}}
