@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from sweeper.config import load_config
 from sweeper.cli import initialize, load_project, save_project
 from sweeper.cli import daemon
 from sweeper.engine import policy_reason
+from sweeper.engine import verify_download
 from sweeper.engine import run
 from sweeper.dock import cleanup_verified_staging, membership, validate_attestation
 from sweeper.model import Candidate, Policy
@@ -98,6 +100,27 @@ class SweeperV2Test(unittest.TestCase):
                           license="CC0-1.0", rights_evidence_url="https://example.test/rights",
                           media_type="application/vnd.comicbook+zip", artifact_class="comic")
         self.assertEqual("media-type-not-allowed", policy_reason(comic, policy))
+
+    def test_rights_free_rom_policy_requires_rights_metadata_checksum_and_valid_zip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); archive = root / "game.zip"
+            with zipfile.ZipFile(archive, "w") as output: output.writestr("game.nes", b"homebrew")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            policy = Policy(languages=["en"], licenses=["HOMEBREW-REDISTRIBUTION-GRANTED"],
+                media_types=["application/zip"], artifact_classes=["game-rom"],
+                require_rights_evidence=True, required_metadata_fields=["platform",
+                    "redistribution_scope", "expected_sha256"], allowed_file_extensions=[".zip"],
+                require_expected_sha256=True, verify_zip_integrity=True)
+            item = Candidate("games", "one", archive.as_uri(), "Family Homebrew", "en",
+                "HOMEBREW-REDISTRIBUTION-GRANTED", "https://example.test/license",
+                "application/zip", "game-rom", "open-public", {"platform":"NES",
+                    "redistribution_scope":"redistribute",
+                    "expected_sha256":digest})
+            self.assertEqual("", policy_reason(item, policy))
+            self.assertEqual("", verify_download(archive, item, policy, digest))
+            commercial = Candidate("games", "two", archive.as_uri(), "Commercial", "en",
+                "UNKNOWN", "", "application/zip", "game-rom", "open-public", {})
+            self.assertEqual("license-not-allowed", policy_reason(commercial, policy))
 
     def test_content_hash_dedup_owner(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -12,6 +12,25 @@ video, images, comics, maps, software, datasets, archives, models, or mixed
 collections. MIME-family rules such as `audio/*`, `video/*`, `image/*`, and
 `text/*` avoid hard-coding every container while keeping policy explicit.
 
+### Rights-free Game ROM and open-software presets
+
+[`examples/rights-free-game-roms.example.json`](examples/rights-free-game-roms.example.json)
+preserves only public-domain, open-license, or explicitly redistribution-authorized
+game ROMs. It requires item-level rights evidence, platform metadata,
+redistribution scope, an expected SHA-256 checksum, approved extensions, and ZIP
+integrity/path validation. It does not attempt to classify games by age or content.
+
+This preset does **not** authorize downloading commercial copyrighted games,
+circumventing DRM, defeating access controls, scraping sign-in-only collections,
+or treating abandonware labels as permission.
+
+[`examples/open-software.example.json`](examples/open-software.example.json) is a
+separate preset for openly licensed software/source archives. It requires a
+recognized license, rights evidence, version/type metadata, redistribution scope,
+and an expected checksum. Operators can select either preset, replace its manifest
+and source slots, and retain the same continuation, hashing, deduplication, staging,
+and optional reviewer workflow.
+
 **Sweeper V2 was created by Christian Cassarly through Jesus New OS and shared
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**

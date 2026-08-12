@@ -8,6 +8,8 @@ import tempfile
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
+import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +46,38 @@ def policy_reason(item: Candidate, policy: Policy) -> str:
         return "artifact-class-not-allowed"
     if policy.data_classes and item.data_class.lower() not in {value.lower() for value in policy.data_classes}:
         return "data-class-not-allowed"
+    missing = [field for field in policy.required_metadata_fields
+               if not str(item.metadata.get(field, "")).strip()]
+    if missing:
+        return "missing-metadata:" + ",".join(sorted(missing))
+    if policy.require_expected_sha256 and not re_full_sha256(str(item.metadata.get("expected_sha256", ""))):
+        return "missing-or-invalid-expected-sha256"
+    if policy.allowed_file_extensions:
+        extension = Path(urllib.request.url2pathname(urllib.parse.urlparse(item.url).path)).suffix.casefold()
+        if extension not in {value.casefold() if value.startswith(".") else "."+value.casefold()
+                             for value in policy.allowed_file_extensions}:
+            return "file-extension-not-allowed"
+    return ""
+
+
+def re_full_sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
+
+
+def verify_download(path: Path, item: Candidate, policy: Policy, digest: str) -> str:
+    expected = str(item.metadata.get("expected_sha256", "")).casefold()
+    if expected and (not re_full_sha256(expected) or expected != digest.casefold()):
+        return "expected-sha256-mismatch"
+    if policy.verify_zip_integrity and zipfile.is_zipfile(path):
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+                if not names: return "empty-zip-archive"
+                if any(name.startswith(("/", "\\")) or ".." in Path(name).parts for name in names):
+                    return "unsafe-zip-member-path"
+                if archive.testzip() is not None: return "zip-crc-failure"
+        except (OSError, zipfile.BadZipFile):
+            return "invalid-zip-archive"
     return ""
 
 
@@ -91,6 +125,11 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
             state.record(**common, status="rejected", reason="below-minimum-bytes", size=size)
             return
         hexdigest = digest.hexdigest()
+        verification_error = verify_download(Path(temporary_name), item, config.policy, hexdigest)
+        if verification_error:
+            state.record(**common, status="rejected", reason=verification_error,
+                         digest=hexdigest, size=size)
+            return
         owner = state.hash_owner(hexdigest)
         if owner:
             state.record(**common, status="duplicate", reason=f"content-match:{owner}", digest=hexdigest, size=size)

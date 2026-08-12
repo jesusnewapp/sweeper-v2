@@ -1,0 +1,24 @@
+{
+  "project": {"name": "Open Software Collection", "overall_target_items": 0, "daily_target_items": 0},
+  "workspace": "./open-software-data",
+  "user_agent": "REPLACE_WITH_ORGANIZATION_AND_CONTACT",
+  "layout": {"major_slots": 2, "minor_slots": 1},
+  "policy": {
+    "languages": [],
+    "licenses": ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "GPL-2.0-only", "GPL-3.0-only", "LGPL-2.1-only", "LGPL-3.0-only", "MPL-2.0", "ISC", "Unlicense", "CC0-1.0", "PUBLIC-DOMAIN"],
+    "media_types": ["application/zip", "application/gzip", "application/x-tar", "application/octet-stream"],
+    "artifact_classes": ["software"],
+    "data_classes": ["open-public", "institution-authorized"],
+    "minimum_bytes": 1,
+    "maximum_bytes": 5368709120,
+    "require_language": false,
+    "require_license": true,
+    "require_rights_evidence": true,
+    "required_metadata_fields": ["software_type", "version", "redistribution_scope", "expected_sha256"],
+    "allowed_file_extensions": [".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z"],
+    "require_expected_sha256": true,
+    "verify_zip_integrity": true,
+    "reviewer_command": []
+  },
+  "sources": [{"id":"approved-open-software","slot":1,"lane":"minor","manifest":"./manifests/open-software.example.jsonl","continuation_manifests":[],"workers":1,"requests_per_second":0.5}]
+}

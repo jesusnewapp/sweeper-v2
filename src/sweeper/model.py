@@ -49,6 +49,10 @@ class Policy:
     require_language: bool = True
     require_license: bool = True
     require_rights_evidence: bool = False
+    required_metadata_fields: List[str] = field(default_factory=list)
+    allowed_file_extensions: List[str] = field(default_factory=list)
+    require_expected_sha256: bool = False
+    verify_zip_integrity: bool = False
     reviewer_command: List[str] = field(default_factory=list)
 
 
