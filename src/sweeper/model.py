@@ -79,3 +79,4 @@ class Config:
     sources: List[Source]
     policy: Policy
     translation: Translation
+    nurture_threshold: int = 30

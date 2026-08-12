@@ -38,6 +38,7 @@ def load_config(path: Path) -> Config:
         sources=sources,
         policy=Policy(**raw.get("policy", {})),
         translation=Translation(**raw.get("translation", {})),
+        nurture_threshold=int(raw.get("nurture", {}).get("threshold", 30)),
     )
     validate_config(config)
     return config
@@ -46,6 +47,8 @@ def load_config(path: Path) -> Config:
 def validate_config(config: Config) -> None:
     if not config.project_name.strip():
         raise ValueError("project name cannot be empty")
+    if not 1 <= config.nurture_threshold <= 10_000:
+        raise ValueError("nurture threshold must be between 1 and 10,000")
     for label, value in (("overall target", config.overall_target_items),
                          ("daily target", config.daily_target_items)):
         if value < 0 or value > MAX_PROJECT_TARGET:

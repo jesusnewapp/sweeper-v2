@@ -19,6 +19,7 @@ from .manifest import candidates
 from .continuation import build_plan, prioritized_sources
 from .model import Candidate, Config, Policy, Source
 from .state import State
+from .nurture import preserve
 
 
 def now() -> str:
@@ -240,9 +241,15 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
             history_tmp = history_path.with_suffix(".tmp")
             history_tmp.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
             history_tmp.replace(history_path)
+        accepted_items=state.accepted_items()
+        nurture=preserve(config.workspace,
+            {f"{item['source_id']}:{item['item_id']}":str(item['sha256']) for item in accepted_items},
+            "accepted",config.nurture_threshold) if accepted_items else {"active":False,"members":0,
+                "threshold":config.nurture_threshold}
         return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
                 "sourceErrors": source_errors, "continuation": continuation,
                 "continuationRequired": bool(continuation), "breathing": breathing,
-                "continuationPlan": str(plan_path), "forecastHistory": str(history_path)}
+                "continuationPlan": str(plan_path), "forecastHistory": str(history_path),
+                "nurture":nurture}
     finally:
         state.close()

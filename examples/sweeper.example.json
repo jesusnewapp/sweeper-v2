@@ -1,5 +1,6 @@
 {
   "workspace": "./sweeper-data",
+  "nurture": {"threshold": 30},
   "user_agent": "Example University Sweeper V2/0.1 (archives@example.edu)",
   "layout": {"major_slots": 2, "minor_slots": 2},
   "policy": {

@@ -164,6 +164,22 @@ the operator explicitly deactivates it or no safe action is currently possible.
 Through those invariants, the fleet continually strives toward the largest,
 best-organized collection it can responsibly build.
 
+## Nurture collections and survivor continuation
+
+Set `nurture.threshold` (30 by default) to preserve passing membership as a
+hash-bound collection. Priority rises with both collection size and lifecycle
+position. A failed acquisition, review, translation, staging, or verification
+member is individually recorded and excluded; it does not silently erase or
+freeze valid survivors. Valid survivors continue toward the next configured
+review, validation, staging, or live-dock gate.
+
+Nurture authority bypasses ordinary queue order, batch-size waiting, idle
+scheduling, restart loops, and discovery priority. It never bypasses rights,
+quality, hash membership, independent validation, serialized writer ownership,
+or deployment verification. Translation uses the same rule: validated
+translations that the stager confirms advance, while unconfirmed members are
+bookkept as individual failures.
+
 ## The boat model
 
 Think of Sweeper as a small, durable research boat. The two major sweepers handle

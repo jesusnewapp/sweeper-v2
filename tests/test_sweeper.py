@@ -24,11 +24,21 @@ from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
 from sweeper.translation_fleet import TranslationFleet
 from sweeper.continuation import build_plan
+from sweeper.nurture import preserve as nurture_preserve
 from sweeper.enforcer import evaluate
 from goodies.indexer import export_json as export_goodies_json, index_jsonl as index_goodies_jsonl
 
 
 class SweeperV2Test(unittest.TestCase):
+    def test_nurture_threshold_preserves_membership_and_raises_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); items={f"source:{n}":hashlib.sha256(str(n).encode()).hexdigest() for n in range(30)}
+            result=nurture_preserve(root,items,"validated",30)
+            self.assertTrue(result["active"]); self.assertEqual(30,result["members"])
+            self.assertGreaterEqual(result["operationalAuthorityScore"],80)
+            self.assertTrue(Path(result["snapshot"]).exists())
+            self.assertTrue(result["singleItemNeverBlocksContinuation"])
+
     def test_pivot_enforcer_holds_source_and_translator_to_sixty_seconds(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

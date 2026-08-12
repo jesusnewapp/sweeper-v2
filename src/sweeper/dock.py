@@ -52,12 +52,16 @@ def validate_attestation(workspace: Path, attestation_path: Path) -> dict:
     if not str(attestation.get("reviewed_by", "")).strip() or not attestation.get("reviewed_at"):
         raise ValueError("attestation reviewer identity and timestamp are required")
     expected = attestation.get("items")
-    if expected != current:
-        raise ValueError("attestation does not match current staged membership and hashes")
+    if not isinstance(expected,dict) or not expected:
+        raise ValueError("attestation has no approved survivor membership")
+    if any(current.get(key)!=digest for key,digest in expected.items()):
+        raise ValueError("attested survivor membership or hashes differ from staging")
+    excluded=sorted(set(current)-set(expected))
     evidence = {"schema_version": 1, "validated_at": now(), "reviewed_by": attestation["reviewed_by"],
                 "reviewed_at": attestation["reviewed_at"],
                 "attestation_sha256": hashlib.sha256(attestation_path.read_bytes()).hexdigest(),
-                "items": current, "item_count": len(current), "passed": True}
+                "items": expected, "item_count": len(expected), "excluded_items":excluded,
+                "single_item_never_blocks_continuation":True,"passed": True}
     atomic_json(workspace / "dock-validation.json", evidence)
     return evidence
 
@@ -87,10 +91,12 @@ def promote(workspace: Path, publisher: list[str], verifier: list[str]) -> dict:
     state = State(workspace / "state.sqlite3")
     try: current = membership(staged(state))
     finally: state.close()
-    if validation.get("passed") is not True or validation.get("items") != current:
-        raise ValueError("staged membership changed after validation")
-    keys = sorted(current)
-    request = {"operation": "publish-validated-staging", "items": current,
+    approved=validation.get("items") or {}
+    if (validation.get("passed") is not True or not approved or
+            any(current.get(key)!=digest for key,digest in approved.items())):
+        raise ValueError("validated survivor membership changed after validation")
+    keys = sorted(approved)
+    request = {"operation": "publish-validated-staging", "items": approved,
                "validation": validation, "requested_at": now()}
     published = command_json(publisher, request)
     if sorted(map(str, published.get("published", []))) != keys:
@@ -99,7 +105,8 @@ def promote(workspace: Path, publisher: list[str], verifier: list[str]) -> dict:
     if sorted(map(str, verified.get("verified", []))) != keys:
         raise ValueError("verifier did not confirm the exact published membership")
     evidence = {"schema_version": 1, "promoted_at": now(), "item_count": len(keys),
-                "items": current, "published": keys, "verified": keys, "passed": True}
+                "items": approved, "published": keys, "verified": keys,
+                "single_item_never_blocks_continuation": True, "passed": True}
     atomic_json(workspace / "dock-promotion.json", evidence)
     return evidence
 
