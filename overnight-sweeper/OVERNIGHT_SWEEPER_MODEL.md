@@ -41,9 +41,10 @@ quality, provenance, hashing, deduplication, or continuation rules.
   change, reactivate it automatically. Source adapters may discard generated
   frozen candidate files after recording retirement, but must never delete
   accepted artifacts, receipts, journals, checkpoints, or deduplication memory.
-- Do not perform staging verification inside the staging loop. The separate
-  stage-to-live workflow owns independent validation, staging verification,
-  and promotion policy.
+- Complete substantive rights, relevance, language, completeness, source, and
+  quality validation once during acquisition. Bind the accepted membership to
+  exact hashes in the staging receipt. Stage-to-live verifies that unchanged
+  attestation; it does not re-download the source or repeat those checks.
 
 ## Unit loop
 
@@ -54,22 +55,23 @@ quality, provenance, hashing, deduplication, or continuation rules.
    frontier and repeat this step inside the same coordinator and source unit.
 4. Apply metadata, rights, language, format, completeness, and policy gates.
 5. Acquire, hash, deduplicate, and preserve accepted artifacts.
-6. Upload only to the configured isolated staging destination. Mark the unit as
-   awaiting stage-to-live validation; do not claim it is independently validated.
+6. Upload only the acquisition-validated set to the configured isolated staging
+   destination. Preserve the exact acceptance policy/version with its hashes.
 7. Write a staging receipt containing source, unit, count, timestamp, artifact
    binding, and an explicit declaration that live production was not mutated.
 8. Commit the completed-unit checkpoint and next frontier before launching the
    successor. Treat receipt, completion accounting, and successor selection as
    one recoverable transition so a crash can replay safely without double
    staging or skipping a frontier.
-9. Immediately begin the next unit. Independent validation is not part of this
-   transition and cannot block acquisition continuation.
+9. Immediately begin the next unit. Stage-to-live attestation reuse cannot block
+   acquisition continuation.
 
-The source adapter's acquisition gates remain mandatory. Moving the independent
-audit out of the staging loop does not permit missing rights evidence, unsafe
-formats, incomplete acquisition, absent hashes, or known duplicates to stage.
-The public V2 guarded dock remains unchanged: before live promotion, an operator
-or review system must independently attest and validate the exact staged hashes.
+The source adapter's acquisition gates remain mandatory. Attestation reuse does
+not permit missing rights evidence, unsafe formats, incomplete acquisition,
+absent hashes, or known duplicates to stage. Before live promotion, the public
+V2 guarded dock verifies the unchanged acquisition attestation and performs a
+fresh live duplicate delta. It removes only duplicates found since acquisition;
+rights, content, and source validation are not repeated.
 
 An individual fresh-delta duplicate never aborts a staging unit or prevents its
 coordinator from advancing. Quarantine that member with its matched identity

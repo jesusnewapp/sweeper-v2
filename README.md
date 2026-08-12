@@ -226,11 +226,12 @@ an already-open batch. Main V2 records `source-batch-start` and
 advances from manual or monitor-triggered recovery.
 
 Staging and live publication remain separate. A high-throughput acquisition fleet
-needs a continuously draining, serialized stage-to-live writer that validates
-exact membership, removes fresh live overlaps, publishes once, verifies the live
-deployment, cleans only verified payloads, and advances directly to the next ready
-unit. Acquisition speed is not useful if the verified publication queue is left
-to grow without bound.
+needs a continuously draining, serialized stage-to-live writer that verifies the
+unchanged acquisition attestation, removes fresh live overlaps, publishes once,
+verifies the live deployment, cleans only verified payloads, and advances directly
+to the next ready unit. It does not repeat rights, relevance, source, or full-text
+validation already completed during acquisition. Acquisition speed is not useful
+if the verified publication queue is left to grow without bound.
 
 ## Nurture collections and survivor continuation
 
@@ -512,9 +513,9 @@ content-addressed bytes, `daemon-state.json` for health and retry timing,
 ## Guarded staging dock and optional live station
 
 Acquisition always lands in the staging dock first. A live destination is not
-configured or contacted by default. Before promotion, an operator or review
-system must create an attestation binding approval to every staged object's
-exact source ID, item ID, and SHA-256 digest:
+configured or contacted by default. Before promotion, acquisition or an
+authorized review system must create an attestation binding completed approval
+to every staged object's exact source ID, item ID, and SHA-256 digest:
 
 ```json
 {
@@ -543,8 +544,13 @@ sweeper dock-promote --config sweeper.json \
   --cleanup-command ./delete-verified-staging
 ```
 
-Promotion fails closed if an object changes, membership differs, either
-command fails, or either response omits an item. Evidence is written to
+Promotion reuses that attestation while its membership, hashes, policy version,
+and validator version remain unchanged. It must not repeat source retrieval,
+rights research, or full-text validation. The live connector must still run a
+fresh duplicate delta immediately before writing and omit each newly live
+identity individually. Promotion fails closed if an object changes, membership
+differs, either command fails, or either response omits an eligible survivor.
+Evidence is written to
 `dock-validation.json` and `dock-promotion.json`. Acquisition can continue in
 staging even when no live connector exists or a live destination is offline.
 
