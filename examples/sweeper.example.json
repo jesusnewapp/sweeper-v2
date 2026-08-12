@@ -1,17 +1,19 @@
 {
   "workspace": "./sweeper-data",
+  "nurture": {"threshold": 30},
   "user_agent": "Example University Sweeper V2/0.1 (archives@example.edu)",
   "layout": {"major_slots": 2, "minor_slots": 2},
   "policy": {
     "languages": ["en"],
     "licenses": ["CC0-1.0", "CC-BY-4.0", "PUBLIC-DOMAIN"],
-    "media_types": ["application/json", "application/xml", "text/plain", "text/html"],
-    "artifact_classes": ["document", "dataset", "archive", "public-record", "media"],
+    "media_types": ["text/*", "audio/*", "video/*", "image/*", "application/json", "application/xml", "application/zip", "application/epub+zip", "application/vnd.comicbook+zip", "application/vnd.comicbook-rar"],
+    "artifact_classes": ["document", "dataset", "archive", "public-record", "audio", "music", "video", "image", "comic", "software", "game-rom", "map", "model", "other"],
     "data_classes": ["open-public", "institution-authorized"],
     "minimum_bytes": 1,
     "maximum_bytes": 1073741824,
     "require_language": true,
     "require_license": true,
+    "require_rights_evidence": true,
     "reviewer_command": []
   },
   "sources": [

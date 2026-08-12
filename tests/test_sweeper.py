@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from sweeper.config import load_config
 from sweeper.cli import initialize, load_project, save_project
 from sweeper.cli import daemon
 from sweeper.engine import policy_reason
+from sweeper.engine import verify_download
 from sweeper.engine import run
 from sweeper.dock import cleanup_verified_staging, membership, validate_attestation
 from sweeper.model import Candidate, Policy
@@ -22,10 +24,47 @@ from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
 from sweeper.translation_fleet import TranslationFleet
 from sweeper.continuation import build_plan
+from sweeper.nurture import preserve as nurture_preserve
+from sweeper.activity import report as activity_report
+from sweeper.enforcer import evaluate
 from goodies.indexer import export_json as export_goodies_json, index_jsonl as index_goodies_jsonl
 
 
 class SweeperV2Test(unittest.TestCase):
+    def test_activity_log_preserves_current_and_historical_dispositions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state=State(Path(directory)/"state.sqlite3")
+            state.record(source_id="lane",item_id="one",url="u",title="One",status="failed",
+                         reason="temporary",updated_at="now")
+            state.record(source_id="lane",item_id="one",url="u",title="One",status="accepted",
+                         updated_at="later",digest="abc",size=3,local_path="p")
+            state.close(); report=activity_report(Path(directory),10)
+            self.assertEqual(2,report["totalEvents"])
+            self.assertEqual(["failed","accepted"],[row["status"] for row in report["recent"]])
+
+    def test_nurture_threshold_preserves_membership_and_raises_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); items={f"source:{n}":hashlib.sha256(str(n).encode()).hexdigest() for n in range(30)}
+            result=nurture_preserve(root,items,"validated",30)
+            self.assertTrue(result["active"]); self.assertEqual(30,result["members"])
+            self.assertGreaterEqual(result["operationalAuthorityScore"],80)
+            self.assertTrue(Path(result["snapshot"]).exists())
+            self.assertTrue(result["singleItemNeverBlocksContinuation"])
+
+    def test_pivot_enforcer_holds_source_and_translator_to_sixty_seconds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lanes = [{"lane": "source-one", "kind": "source", "required": True,
+                      "counts": {"failed": 1}, "target": 50},
+                     {"lane": "translator", "kind": "translation", "required": True,
+                      "counts": {"queued": 2}}]
+            first = evaluate(root, lanes, current_epoch=1000)
+            self.assertFalse(first["enforcementRequired"])
+            overdue = evaluate(root, lanes, current_epoch=1060)
+            self.assertTrue(overdue["enforcementRequired"])
+            self.assertEqual(["source-one", "translator"], overdue["overdue"])
+            self.assertTrue(overdue["doesNotChoosePivot"])
+
     def test_goodies_indexer_is_incremental_and_exports_ui_data(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); source = root / "records.jsonl"; database = root / "index.sqlite3"
@@ -65,6 +104,45 @@ class SweeperV2Test(unittest.TestCase):
         item = Candidate("s", "i", "https://example.test/i", language="en", license="")
         reason = policy_reason(item, Policy(languages=["en"], licenses=["CC0-1.0"]))
         self.assertEqual("missing-license", reason)
+
+    def test_media_family_policy_and_rights_evidence(self):
+        policy = Policy(languages=["en"], licenses=["CC0-1.0"],
+                        media_types=["audio/*", "video/*"],
+                        artifact_classes=["music", "video"],
+                        require_rights_evidence=True)
+        missing = Candidate("s", "a", "https://example.test/a.flac", language="en",
+                            license="CC0-1.0", media_type="audio/flac",
+                            artifact_class="music")
+        self.assertEqual("missing-rights-evidence", policy_reason(missing, policy))
+        audio = Candidate("s", "a", "https://example.test/a.flac", language="en",
+                          license="CC0-1.0", rights_evidence_url="https://example.test/rights",
+                          media_type="audio/flac", artifact_class="music")
+        self.assertEqual("", policy_reason(audio, policy))
+        comic = Candidate("s", "c", "https://example.test/c.cbz", language="en",
+                          license="CC0-1.0", rights_evidence_url="https://example.test/rights",
+                          media_type="application/vnd.comicbook+zip", artifact_class="comic")
+        self.assertEqual("media-type-not-allowed", policy_reason(comic, policy))
+
+    def test_rights_free_rom_policy_requires_rights_metadata_checksum_and_valid_zip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); archive = root / "game.zip"
+            with zipfile.ZipFile(archive, "w") as output: output.writestr("game.nes", b"homebrew")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            policy = Policy(languages=["en"], licenses=["HOMEBREW-REDISTRIBUTION-GRANTED"],
+                media_types=["application/zip"], artifact_classes=["game-rom"],
+                require_rights_evidence=True, required_metadata_fields=["platform",
+                    "redistribution_scope", "expected_sha256"], allowed_file_extensions=[".zip"],
+                require_expected_sha256=True, verify_zip_integrity=True)
+            item = Candidate("games", "one", archive.as_uri(), "Family Homebrew", "en",
+                "HOMEBREW-REDISTRIBUTION-GRANTED", "https://example.test/license",
+                "application/zip", "game-rom", "open-public", {"platform":"NES",
+                    "redistribution_scope":"redistribute",
+                    "expected_sha256":digest})
+            self.assertEqual("", policy_reason(item, policy))
+            self.assertEqual("", verify_download(archive, item, policy, digest))
+            commercial = Candidate("games", "two", archive.as_uri(), "Commercial", "en",
+                "UNKNOWN", "", "application/zip", "game-rom", "open-public", {})
+            self.assertEqual("license-not-allowed", policy_reason(commercial, policy))
 
     def test_content_hash_dedup_owner(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -149,6 +227,8 @@ class SweeperV2Test(unittest.TestCase):
                     {"id": "good", "slot": 2, "lane": "major", "manifest": "good.jsonl"}]}))
             result = run(load_config(config_path))
             self.assertEqual(1, result["counts"]["accepted"])
+            self.assertFalse(result["sweeperBlocked"])
+            self.assertEqual("bookkeep-item-or-source-and-continue", result["failureDisposition"])
             self.assertEqual("broken", result["sourceErrors"][0]["source"])
             self.assertTrue(Path(result["forecastHistory"]).exists())
 

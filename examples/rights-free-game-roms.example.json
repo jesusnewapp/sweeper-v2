@@ -1,0 +1,24 @@
+{
+  "project": {"name": "Rights-Free Game ROM Preservation", "overall_target_items": 0, "daily_target_items": 0},
+  "workspace": "./rights-free-rom-data",
+  "user_agent": "REPLACE_WITH_ORGANIZATION_AND_CONTACT",
+  "layout": {"major_slots": 2, "minor_slots": 1},
+  "policy": {
+    "languages": [],
+    "licenses": ["CC0-1.0", "CC-BY-4.0", "PUBLIC-DOMAIN", "HOMEBREW-REDISTRIBUTION-GRANTED"],
+    "media_types": ["application/octet-stream", "application/zip"],
+    "artifact_classes": ["game-rom"],
+    "data_classes": ["open-public", "institution-authorized"],
+    "minimum_bytes": 1,
+    "maximum_bytes": 1073741824,
+    "require_language": false,
+    "require_license": true,
+    "require_rights_evidence": true,
+    "required_metadata_fields": ["platform", "redistribution_scope", "expected_sha256"],
+    "allowed_file_extensions": [".zip", ".nes", ".gb", ".gbc", ".gba", ".sms", ".gg", ".md", ".sfc", ".smc", ".pce", ".a26", ".a78", ".ch8", ".tic", ".p8"],
+    "require_expected_sha256": true,
+    "verify_zip_integrity": true,
+    "reviewer_command": []
+  },
+  "sources": [{"id":"approved-rights-free-roms","slot":1,"lane":"minor","manifest":"./manifests/rights-free-game-roms.example.jsonl","continuation_manifests":[],"workers":1,"requests_per_second":0.5}]
+}

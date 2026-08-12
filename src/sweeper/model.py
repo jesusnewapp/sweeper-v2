@@ -13,6 +13,7 @@ class Candidate:
     title: str = ""
     language: str = ""
     license: str = ""
+    rights_evidence_url: str = ""
     media_type: str = "application/octet-stream"
     artifact_class: str = "unspecified"
     data_class: str = "unspecified"
@@ -47,6 +48,11 @@ class Policy:
     maximum_bytes: Optional[int] = None
     require_language: bool = True
     require_license: bool = True
+    require_rights_evidence: bool = False
+    required_metadata_fields: List[str] = field(default_factory=list)
+    allowed_file_extensions: List[str] = field(default_factory=list)
+    require_expected_sha256: bool = False
+    verify_zip_integrity: bool = False
     reviewer_command: List[str] = field(default_factory=list)
 
 
@@ -73,3 +79,4 @@ class Config:
     sources: List[Source]
     policy: Policy
     translation: Translation
+    nurture_threshold: int = 30

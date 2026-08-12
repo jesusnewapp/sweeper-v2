@@ -16,6 +16,9 @@ from .state import State
 from .translation import capabilities, translate_file
 from .translation_fleet import TranslationFleet
 from .continuation import build_plan
+from .enforcer import enforce
+from .activity import report as activity_report
+from .activity import record as activity_record
 
 
 EXAMPLE = {
@@ -26,10 +29,15 @@ EXAMPLE = {
     "layout": {"major_slots": 2, "minor_slots": 2},
     "policy": {
         "languages": ["en"], "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
-        "media_types": ["application/json", "application/xml", "text/plain", "text/html"],
-        "artifact_classes": [], "data_classes": ["open-public", "institution-authorized"],
+        "media_types": ["text/*", "audio/*", "video/*", "image/*", "application/json",
+                        "application/xml", "application/zip", "application/epub+zip",
+                        "application/vnd.comicbook+zip", "application/vnd.comicbook-rar"],
+        "artifact_classes": ["document", "dataset", "archive", "audio", "music", "video",
+                             "image", "comic", "software", "map", "model", "other"],
+        "data_classes": ["open-public", "institution-authorized"],
         "minimum_bytes": 1, "maximum_bytes": 1073741824,
-        "require_language": True, "require_license": True, "reviewer_command": [],
+        "require_language": True, "require_license": True, "require_rights_evidence": True,
+        "reviewer_command": [],
     },
     "translation": {"enabled": False, "batch_size": 50,
         "staging_collection": "REPLACE_WITH_YOUR_TRANSLATION_STAGING_COLLECTION",
@@ -96,6 +104,7 @@ def initialize(path: Path) -> None:
     template.write_text(
         json.dumps({"id": "stable-record-id", "url": "https://example.org/file.xml",
                     "title": "Example record", "language": "en", "license": "CC0-1.0",
+                    "rights_evidence_url": "https://example.org/rights",
                     "media_type": "application/xml", "artifact_class": "document",
                     "data_class": "open-public", "metadata": {"topic": "your topic"}}) + "\n",
         encoding="utf-8",
@@ -121,16 +130,21 @@ def daemon(config_path: Path, interval: float, once: bool = False,
                     "checkedAt": datetime.now(timezone.utc).isoformat(), "progress": detail,
                     "consecutiveFailures": consecutive_failures})
             result = run(config, progress=heartbeat)
+            pivot = enforce(config)
+            activity_record(config.workspace,"one-minute-pivot-evaluation",lane="pivot-enforcer",
+                status="action-required" if pivot.get("enforcementRequired") else "progressing",
+                detail={"enforcementRequired":pivot.get("enforcementRequired"),
+                        "overdue":pivot.get("overdue",[])})
             payload.update({"status": "degraded" if result.get("sourceErrors") else "healthy",
-                            "result": result})
+                            "result": result,"pivotEvaluation":pivot,"pivotEverySeconds":60})
         except Exception as error:
             payload.update({"status": "retrying", "error": f"{type(error).__name__}: {error}"})
             consecutive_failures += 1
         else:
             consecutive_failures = 0
-        next_delay = min(max_backoff, interval * (2 ** max(0, consecutive_failures - 1)))
+        next_delay = min(60.0, max_backoff, interval * (2 ** max(0, consecutive_failures - 1)))
         payload.update({"consecutiveFailures": consecutive_failures,
-                        "nextCheckSeconds": next_delay})
+                        "nextCheckSeconds": next_delay,"pivotEverySeconds":60})
         write_health(payload)
         print(json.dumps(payload, indent=2), flush=True)
         if once:
@@ -146,11 +160,18 @@ def main() -> int:
     for name in ("validate", "run", "status", "plan", "sources"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    activity_command = sub.add_parser("activity-log")
+    activity_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    activity_command.add_argument("--limit", type=int, default=100)
     daemon_command = sub.add_parser("daemon")
     daemon_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     daemon_command.add_argument("--interval", type=float, default=60.0)
     daemon_command.add_argument("--once", action="store_true")
     daemon_command.add_argument("--max-backoff", type=float, default=900.0)
+    enforcer_command = sub.add_parser("pivot-enforcer")
+    enforcer_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    enforcer_command.add_argument("--watch", action="store_true")
+    enforcer_command.add_argument("--poll-seconds", type=float, default=10.0)
     discover_command = sub.add_parser("discover")
     discover_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     discover_command.add_argument("--category", action="append", default=[])
@@ -219,6 +240,19 @@ def main() -> int:
         if args.max_backoff < args.interval:
             raise SystemExit("daemon maximum backoff must be at least the base interval")
         return daemon(args.config.resolve(), args.interval, args.once, args.max_backoff)
+    if args.command == "activity-log":
+        config=load_config(args.config.resolve())
+        print(json.dumps(activity_report(config.workspace,args.limit),indent=2)); return 0
+    if args.command == "pivot-enforcer":
+        if args.poll_seconds < 5:
+            raise SystemExit("pivot-enforcer poll interval must be at least five seconds")
+        config = load_config(args.config.resolve())
+        while True:
+            result = enforce(config)
+            print(json.dumps(result, indent=2), flush=True)
+            if not args.watch:
+                return 2 if result["enforcementRequired"] else 0
+            time.sleep(args.poll_seconds)
     if args.command == "translator-status":
         print(json.dumps(capabilities(), indent=2)); return 0
     if args.command == "translate":

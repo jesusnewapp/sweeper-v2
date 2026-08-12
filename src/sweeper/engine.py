@@ -7,6 +7,9 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import urllib.error
+import urllib.parse
+import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +19,8 @@ from .manifest import candidates
 from .continuation import build_plan, prioritized_sources
 from .model import Candidate, Config, Policy, Source
 from .state import State
+from .nurture import preserve
+from .activity import record as activity_record
 
 
 def now() -> str:
@@ -31,12 +36,50 @@ def policy_reason(item: Candidate, policy: Policy) -> str:
         return "missing-license"
     if policy.licenses and item.license.lower() not in {value.lower() for value in policy.licenses}:
         return "license-not-allowed"
-    if policy.media_types and item.media_type.lower() not in {value.lower() for value in policy.media_types}:
+    if policy.require_rights_evidence and not item.rights_evidence_url:
+        return "missing-rights-evidence"
+    allowed_media = {value.lower() for value in policy.media_types}
+    media_type = item.media_type.lower()
+    if allowed_media and not any(
+            rule == media_type or (rule.endswith("/*") and media_type.startswith(rule[:-1]))
+            for rule in allowed_media):
         return "media-type-not-allowed"
     if policy.artifact_classes and item.artifact_class.lower() not in {value.lower() for value in policy.artifact_classes}:
         return "artifact-class-not-allowed"
     if policy.data_classes and item.data_class.lower() not in {value.lower() for value in policy.data_classes}:
         return "data-class-not-allowed"
+    missing = [field for field in policy.required_metadata_fields
+               if not str(item.metadata.get(field, "")).strip()]
+    if missing:
+        return "missing-metadata:" + ",".join(sorted(missing))
+    if policy.require_expected_sha256 and not re_full_sha256(str(item.metadata.get("expected_sha256", ""))):
+        return "missing-or-invalid-expected-sha256"
+    if policy.allowed_file_extensions:
+        extension = Path(urllib.request.url2pathname(urllib.parse.urlparse(item.url).path)).suffix.casefold()
+        if extension not in {value.casefold() if value.startswith(".") else "."+value.casefold()
+                             for value in policy.allowed_file_extensions}:
+            return "file-extension-not-allowed"
+    return ""
+
+
+def re_full_sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
+
+
+def verify_download(path: Path, item: Candidate, policy: Policy, digest: str) -> str:
+    expected = str(item.metadata.get("expected_sha256", "")).casefold()
+    if expected and (not re_full_sha256(expected) or expected != digest.casefold()):
+        return "expected-sha256-mismatch"
+    if policy.verify_zip_integrity and zipfile.is_zipfile(path):
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+                if not names: return "empty-zip-archive"
+                if any(name.startswith(("/", "\\")) or ".." in Path(name).parts for name in names):
+                    return "unsafe-zip-member-path"
+                if archive.testzip() is not None: return "zip-crc-failure"
+        except (OSError, zipfile.BadZipFile):
+            return "invalid-zip-archive"
     return ""
 
 
@@ -84,6 +127,11 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
             state.record(**common, status="rejected", reason="below-minimum-bytes", size=size)
             return
         hexdigest = digest.hexdigest()
+        verification_error = verify_download(Path(temporary_name), item, config.policy, hexdigest)
+        if verification_error:
+            state.record(**common, status="rejected", reason=verification_error,
+                         digest=hexdigest, size=size)
+            return
         owner = state.hash_owner(hexdigest)
         if owner:
             state.record(**common, status="duplicate", reason=f"content-match:{owner}", digest=hexdigest, size=size)
@@ -97,6 +145,11 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
                          size=size, local_path=str(destination))
             return
         state.record(**common, status="accepted", digest=hexdigest, size=size, local_path=str(destination))
+    except urllib.error.HTTPError as error:
+        if error.code in {401, 403, 407}:
+            state.record(**common, status="rejected", reason=f"access-required-http-{error.code}")
+        else:
+            state.record(**common, status="failed", reason=f"HTTPError:{error.code}")
     except Exception as error:
         state.record(**common, status="failed", reason=f"{type(error).__name__}:{error}")
     finally:
@@ -107,6 +160,7 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
 
 def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> dict:
     config.workspace.mkdir(parents=True, exist_ok=True)
+    activity_record(config.workspace,"cycle-start",detail={"project":config.project_name})
     state = State(config.workspace / "state.sqlite3")
     source_errors = []
     continuation = []
@@ -146,6 +200,8 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                 except Exception as error:
                     source_errors.append({"source": source.id, "manifest": manifest,
                         "error": f"{type(error).__name__}: {error}"})
+                    activity_record(config.workspace,"source-failure-bookkept",lane=source.id,
+                        status="continuing",detail=source_errors[-1])
                     if progress:
                         progress({"phase": "source-error", "source": source.id,
                                   "manifest": manifest, "error": source_errors[-1]["error"]})
@@ -189,9 +245,20 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
             history_tmp = history_path.with_suffix(".tmp")
             history_tmp.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
             history_tmp.replace(history_path)
-        return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+        accepted_items=state.accepted_items()
+        nurture=preserve(config.workspace,
+            {f"{item['source_id']}:{item['item_id']}":str(item['sha256']) for item in accepted_items},
+            "accepted",config.nurture_threshold) if accepted_items else {"active":False,"members":0,
+                "threshold":config.nurture_threshold}
+        result={"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+                "sweeperBlocked": False,
+                "failureDisposition": "bookkeep-item-or-source-and-continue",
                 "sourceErrors": source_errors, "continuation": continuation,
                 "continuationRequired": bool(continuation), "breathing": breathing,
-                "continuationPlan": str(plan_path), "forecastHistory": str(history_path)}
+                "continuationPlan": str(plan_path), "forecastHistory": str(history_path),
+                "nurture":nurture}
+        activity_record(config.workspace,"cycle-complete",status="continuing",detail={
+            "counts":result["counts"],"sourceErrors":len(source_errors),"nurture":nurture})
+        return result
     finally:
         state.close()

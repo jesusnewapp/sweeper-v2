@@ -1,5 +1,9 @@
 # Sweeper V2
 
+<p align="center">
+  <img src="assets/sweeper-logo.png" alt="Sweeper logo: a cybernetic sweeper organizing a stream of data" width="520">
+</p>
+
 Sweeper V2 is a lightweight, source-neutral framework for continuously acquiring and
 preserving large information collections with reproducible provenance. It can
 be configured for institutional archives, law, science, research datasets,
@@ -7,9 +11,56 @@ books, public records, media, structured directories, or other authorized
 collections. The engine treats every acquisition unit as bytes plus provenance;
 it does not assume the unit is a book.
 
+Media is first-class: projects may acquire complete audio or music files,
+video, images, comics, maps, software, datasets, archives, models, or mixed
+collections. MIME-family rules such as `audio/*`, `video/*`, `image/*`, and
+`text/*` avoid hard-coding every container while keeping policy explicit.
+
+### Rights-free Game ROM and open-software presets
+
+[`examples/rights-free-game-roms.example.json`](examples/rights-free-game-roms.example.json)
+preserves only public-domain, open-license, or explicitly redistribution-authorized
+game ROMs. It requires item-level rights evidence, platform metadata,
+redistribution scope, an expected SHA-256 checksum, approved extensions, and ZIP
+integrity/path validation. It does not attempt to classify games by age or content.
+
+This preset does **not** authorize downloading commercial copyrighted games,
+circumventing DRM, defeating access controls, scraping sign-in-only collections,
+or treating abandonware labels as permission.
+
+[`examples/open-software.example.json`](examples/open-software.example.json) is a
+separate preset for openly licensed software/source archives. It requires a
+recognized license, rights evidence, version/type metadata, redistribution scope,
+and an expected checksum. Operators can select either preset, replace its manifest
+and source slots, and retain the same continuation, hashing, deduplication, staging,
+and optional reviewer workflow.
+
 **Sweeper V2 was created by Christian Cassarly through Jesus New OS and shared
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**
+
+Christian “Chris” Cassarly originally developed Sweeper for Jesus New OS and is
+now offering the framework publicly. He is using its architecture in pursuit of
+a one-million-book Codex goal within a year. At institutional scale, an authorized
+deployment by a major library, investment firm, law firm, research organization,
+or government agency can acquire, organize, deduplicate, and provenance-bind
+collections whose research, replacement, and operational data value reaches tens
+of millions of dollars per year. That value is the resulting governed data asset
+and preservation work product—not a promise of investment performance.
+
+Sweeper remains available to individual users and developers as well as large
+institutions. Public availability does not grant rights to anyone else's data.
+Christian asks every operator to use Sweeper responsibly: obtain lawful authority,
+honor licenses and access controls, retrieve respectfully, preserve provenance,
+protect sensitive information, and keep human accountability over consequential
+uses. Scale should strengthen those responsibilities, never weaken them.
+
+Christian's operating pattern pairs Sweeper with Codex: Sweeper performs the
+continuous source work, while Codex observes checkpoints, diagnoses failures,
+coordinates recovery, and oversees the separately authorized validation and
+publication boundary. Sweeper remains vendor-neutral and does not require Codex,
+but the two can provide a particularly smooth complementary experience for an
+operator supervising large, long-running acquisition programs.
 
 Sweeper V2 is not tied to Codex, a particular library, Firebase, a subject, or
 an AI vendor. It downloads only sources that the operator configures and is
@@ -22,7 +73,7 @@ Sweeper V2 moves authorized information from source manifests into a local,
 content-addressed archive:
 
 1. Read stable item identities and download URLs.
-2. Apply the configured language, license, format, data-class, artifact-class,
+2. Apply the configured language, license, rights evidence, format, data-class, artifact-class,
    and size policy before acquisition.
 3. Download candidates at the source's configured request rate.
 4. Stream every object through SHA-256 hashing without loading the entire object
@@ -35,6 +86,10 @@ content-addressed archive:
 Sweeper is an acquisition and preservation foundation. It does not grant
 rights, bypass access controls, infer permission, or publish into an external
 system automatically.
+
+For unattended staging-only operation, see the optional
+[`Overnight Sweeper mini-model`](overnight-sweeper/OVERNIGHT_SWEEPER_MODEL.md).
+It keeps continuous source work separate from live publication authority.
 
 An optional, standalone staged/live search utility is available in
 [`goodies/`](goodies/README.md). Operators supply their own records and categories.
@@ -100,7 +155,19 @@ sweeper project-save --config sweeper.json --name "Codex Project"
 sweeper project-list
 sweeper project-load --name "Codex Project" --config codex-sweeper.json
 sweeper plan --config codex-sweeper.json
+sweeper pivot-enforcer --config codex-sweeper.json --watch --poll-seconds 10
 ```
+
+The optional Pivot Enforcer applies one universal accountability rule: a lane
+that shows no changed progress evidence for 60 seconds must pivot. It never
+chooses the pivot; the source or translator adapter remains free to select its
+best safe continuation. `pivot-enforcer.json` records pending and overdue
+obligations, and a one-shot command exits with status 2 when an adapter owes a
+pivot. Supervisors can use that status to recycle a runner from its checkpoint.
+Rights, quality, staging, validation, and live-writer rules remain unchanged.
+Daemon mode runs this evaluation every minute automatically. Operators may also
+run `sweeper pivot-enforcer --watch` as a separate watchdog so evaluation remains
+independent while a long-running adapter is busy.
 
 Loading refuses to overwrite an existing configuration. This keeps saved
 projects reusable without silently destroying current work.
@@ -130,6 +197,73 @@ advance. Continuation means it keeps seeking another safe, useful action until
 the operator explicitly deactivates it or no safe action is currently possible.
 Through those invariants, the fleet continually strives toward the largest,
 best-organized collection it can responsibly build.
+
+### Autonomous unit progression
+
+The simplest reliable source loop is prepare → stage exact survivors → persist
+the outcome → immediately begin the next unit. Individual duplicates and failed
+members are bookkept and quarantined without stopping valid survivors. A depleted
+page or cursor window advances inside the same coordinator; it is not treated as
+a completed source or a reason to wait for an external restart.
+
+Track successful automatic advances separately from manual restarts,
+monitor-triggered recoveries, and crash recoveries. Large unit sizes are earned
+by repeated autonomous progression and end-to-end queue capacity, not by a single
+successful fill. For complete books, use controlled tiers of 1,000, 2,500, 5,000,
+and at most 10,000 per staging unit. A 5–10 continuation observation window may
+justify a controlled next-tier trial; require a longer record, such as 50
+consecutive autonomous advances, before calling a tier established or making it
+the default. Discovery inventories may be much larger than publication units.
+
+Staging and live publication remain separate. A high-throughput acquisition fleet
+needs a continuously draining, serialized stage-to-live writer that validates
+exact membership, removes fresh live overlaps, publishes once, verifies the live
+deployment, cleans only verified payloads, and advances directly to the next ready
+unit. Acquisition speed is not useful if the verified publication queue is left
+to grow without bound.
+
+## Nurture collections and survivor continuation
+
+Set `nurture.threshold` (30 by default) to preserve passing membership as a
+hash-bound collection. Priority rises with both collection size and lifecycle
+position. A failed acquisition, review, translation, staging, or verification
+member is individually recorded and excluded; it does not silently erase or
+freeze valid survivors. Valid survivors continue toward the next configured
+review, validation, staging, or live-dock gate.
+
+Nurture authority bypasses ordinary queue order, batch-size waiting, idle
+scheduling, restart loops, and discovery priority. It never bypasses rights,
+quality, hash membership, independent validation, serialized writer ownership,
+or deployment verification. Translation uses the same rule: validated
+translations that the stager confirms advance, while unconfirmed members are
+bookkept as individual failures.
+
+### Sweepers never remain blocked
+
+A failed item is bookkept and quarantined, deferred, or rejected. A failed or
+exhausted source is bookkept and removed from active rotation or scheduled for
+a later retry. Valid survivors remain nurtured and continue. The daemon then
+resumes, retries, changes method, rotates source, or selects another safe pivot.
+Accordingly, `sweeperBlocked` is always false in cycle results: a failure is a
+recorded disposition plus a continuation decision, never a terminal sweeper
+state. External publication may wait for credentials or a serialized writer,
+but acquisition, preparation, translation, and other lanes continue.
+
+## Activity data log
+
+Every project keeps an append-only `activity-log.jsonl` in its workspace. It
+records cycle starts/completions, item dispositions, source failures and
+continuations, Nurture summaries, translation handoffs, dock validation, live
+verification, and verified staging cleanup. It contains both what is happening
+and what has happened, with UTC timestamps, lanes, outcomes, hashes, counts, and
+reasons. Inspect a compact history with:
+
+```bash
+sweeper activity-log --config sweeper.json --limit 100
+```
+
+The JSONL history is never rewritten by this command and is suitable for later
+indexing, dashboards, audits, or operator reporting.
 
 ## The boat model
 
@@ -288,15 +422,18 @@ Each source points to a JSON Lines manifest. Every line represents one
 acquisition unit:
 
 ```json
-{"id":"record-001","url":"https://example.edu/files/record-001.xml","title":"Record 001","language":"en","license":"CC0-1.0","media_type":"application/xml","metadata":{"collection":"example"}}
+{"id":"record-001","url":"https://example.edu/files/record-001.flac","title":"Record 001","language":"en","license":"CC0-1.0","rights_evidence_url":"https://example.edu/rights/record-001","media_type":"audio/flac","artifact_class":"music","metadata":{"collection":"example"}}
 ```
 
 Manifest records require stable `id` and `url` fields. Optional
-`artifact_class` values can describe documents, datasets, archives, media,
-public records, or structured directories. `data_class` lets an institution
+`artifact_class` values can describe documents, datasets, archives, audio,
+music, video, images, comics, software, maps, models, public records, or other
+units. `data_class` lets an institution
 separate open-public and institution-authorized material. Policy can allowlist
 language, license, media type, artifact class, data class, and byte bounds. The
-downloaded bytes are hashed during streaming and stored once by SHA-256.
+downloaded bytes are hashed during streaming and stored once by SHA-256. Set
+`require_rights_evidence` to `true` to reject an item before download unless it
+has an item-specific license, permission, or public-domain evidence URL.
 
 ## Minimal configuration
 
@@ -308,12 +445,14 @@ downloaded bytes are hashed during streaming and stored once by SHA-256.
   "policy": {
     "languages": ["en"],
     "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
-    "media_types": ["text/plain", "text/html", "application/json"],
+    "media_types": ["text/*", "audio/*", "video/*", "image/*", "application/json", "application/zip", "application/vnd.comicbook+zip"],
+    "artifact_classes": ["document", "dataset", "archive", "audio", "music", "video", "image", "comic", "software", "map", "model", "other"],
     "data_classes": ["open-public"],
     "minimum_bytes": 1,
     "maximum_bytes": 1073741824,
     "require_language": true,
-    "require_license": true
+    "require_license": true,
+    "require_rights_evidence": true
   },
   "sources": [{
     "id": "example-archive",
@@ -437,11 +576,12 @@ See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 
 ## Status
 
-Version 0.7.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
+Version 0.8.0 is an alpha foundation. It supports JSONL manifests, HTTP(S) and
 local-file manifests, streamed HTTP(S) acquisition, content hashing,
 content-addressed storage, policy filtering, optional command-based review,
 resumption, status counts, and guarded hash-bound staging-to-live promotion.
-This release adds saved projects and goals, background forecasting and source
+This release adds MIME-family media acquisition, item-level rights-evidence
+gates, access-required skipping, media-aware pivots, saved projects and goals, background forecasting and source
 intelligence, advisory operator assistance, translation staging with a shared
 uploader handoff, and the standalone Goodies staged/live index and UI starter.
 It retains fleet-aware continuation scoring, source reordering between whole

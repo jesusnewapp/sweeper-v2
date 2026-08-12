@@ -10,6 +10,8 @@ from .dock import atomic_json, command_json
 from .model import Config
 from .state import State
 from .translation import LANGUAGES, translate_file
+from .nurture import preserve
+from .activity import record as activity_record
 
 
 SCHEMA = """
@@ -123,18 +125,30 @@ class TranslationFleet:
             "target_language": target, "items": passing, "requested_at": now(),
             "sharedOverallUploaderRequired": True}
         staged = command_json(self.config.translation.stager_command, request)
-        keys = sorted(passing)
-        if sorted(map(str, staged.get("staged", []))) != keys:
-            raise ValueError("translation stager did not confirm exact validated membership")
+        keys = sorted(passing); staged_keys=sorted(map(str,staged.get("staged",[])))
+        if not set(staged_keys).issubset(keys):
+            raise ValueError("translation stager returned unknown membership")
+        stage_failed=sorted(set(keys)-set(staged_keys))
+        for key in stage_failed:
+            failed.append({"job":key,"error":"stager-did-not-confirm-member"})
         with self.db:
             self.db.executemany("UPDATE translation_jobs SET status='staged',updated_at=? WHERE job_key=?",
-                                [(now(), key) for key in keys])
+                                [(now(), key) for key in staged_keys])
+            self.db.executemany("UPDATE translation_jobs SET status='failed',reason=?,updated_at=? WHERE job_key=?",
+                                [("stager-did-not-confirm-member",now(),key) for key in stage_failed])
+        staged_passing={key:passing[key] for key in staged_keys}
+        nurture=preserve(self.root,{key:passing[key]["sha256"] for key in staged_keys},
+                         "staged",self.config.nurture_threshold) if staged_keys else {"active":False,"members":0}
         handoff = {"schema_version": 1, "created_at": now(),
             "translationCollection": self.config.translation.staging_collection,
-            "targetLanguage": target, "items": passing, "itemCount": len(keys),
+            "targetLanguage": target, "items": staged_passing, "itemCount": len(staged_keys),
+            "nurture":nurture,"singleItemNeverBlocksContinuation":True,"failed":failed,
             "sharedOverallUploaderRequired": True, "liveWriterAcquired": False}
         atomic_json(self.root / f"live-handoff-{target}.json", handoff)
+        activity_record(self.config.workspace,"translation-batch-handoff",lane="translator",
+            status="continuing",detail={"targetLanguage":target,"validated":len(keys),
+                "staged":len(staged_keys),"failed":len(failed),"nurture":nurture})
         next_batch = self.queue(target)
-        return {"targetLanguage": target, "validated": len(keys), "staged": len(keys),
+        return {"targetLanguage": target, "validated": len(keys), "staged": len(staged_keys),
                 "failed": failed, "handoff": str(self.root / f"live-handoff-{target}.json"),
                 "nextBatchMayQueue": True, "nextBatch": next_batch}

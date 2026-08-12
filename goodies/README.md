@@ -1,5 +1,8 @@
 # Goodies standalone staged/live indexer
 
+The Goodies folder also includes an [open-source ROM player guide](ROM_PLAYERS.md)
+for testing rights-free game acquisitions without bundling third-party binaries.
+
 This optional tool builds a local full-text index for an operator's own staged
 and live records. It is not part of Sweeper acquisition and contains no Codex
 titles, private categories, backend identifiers, or credentials.
