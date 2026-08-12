@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,12 +14,15 @@ from .discovery import DEFAULT_CATEGORIES, discover
 from .dock import cleanup_verified_staging, promote, staged, validate_attestation
 from .state import State
 from .translation import capabilities, translate_file
+from .translation_fleet import TranslationFleet
 from .continuation import build_plan
 
 
 EXAMPLE = {
     "workspace": "./sweeper-data",
     "user_agent": "YOUR INSTITUTION Sweeper V2/0.1 (YOUR-CONTACT@example.org)",
+    "project": {"name": "My Collection", "overall_target_items": 0,
+                "daily_target_items": 0},
     "layout": {"major_slots": 2, "minor_slots": 2},
     "policy": {
         "languages": ["en"], "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
@@ -26,8 +31,58 @@ EXAMPLE = {
         "minimum_bytes": 1, "maximum_bytes": 1073741824,
         "require_language": True, "require_license": True, "reviewer_command": [],
     },
+    "translation": {"enabled": False, "batch_size": 50,
+        "staging_collection": "REPLACE_WITH_YOUR_TRANSLATION_STAGING_COLLECTION",
+        "target_languages": [], "notifier_command": [],
+        "validator_command": [], "stager_command": []},
     "sources": [],
 }
+
+
+def project_file(directory: Path, name: str) -> Path:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not slug:
+        raise SystemExit("project name must contain a letter or number")
+    return directory.resolve() / f"{slug}.json"
+
+
+def save_project(config_path: Path, directory: Path, name: str) -> Path:
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    raw.setdefault("project", {})["name"] = name
+    base = config_path.resolve().parent
+    workspace = Path(str(raw.get("workspace", "./sweeper-data")))
+    if not workspace.is_absolute():
+        raw["workspace"] = str((base / workspace).resolve())
+    for source in raw.get("sources", []):
+        manifest = str(source.get("manifest", ""))
+        if manifest and "://" not in manifest and not Path(manifest).is_absolute():
+            source["manifest"] = str((base / manifest).resolve())
+        source["continuation_manifests"] = [
+            location if "://" in str(location) or Path(str(location)).is_absolute()
+            else str((base / str(location)).resolve())
+            for location in source.get("continuation_manifests", [])
+        ]
+    target = project_file(directory, name)
+    if target.exists():
+        raise SystemExit(f"refusing to overwrite saved project: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(target)
+    load_config(target)
+    return target
+
+
+def load_project(directory: Path, name: str, config_path: Path) -> Path:
+    source = project_file(directory, name)
+    if not source.exists():
+        raise SystemExit(f"saved project not found: {source}")
+    if config_path.exists():
+        raise SystemExit(f"refusing to overwrite existing configuration: {config_path}")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, config_path)
+    load_config(config_path)
+    return config_path
 
 
 def initialize(path: Path) -> None:
@@ -88,7 +143,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     initialize_command = sub.add_parser("init")
     initialize_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
-    for name in ("validate", "run", "status", "plan"):
+    for name in ("validate", "run", "status", "plan", "sources"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     daemon_command = sub.add_parser("daemon")
@@ -100,6 +155,16 @@ def main() -> int:
     discover_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     discover_command.add_argument("--category", action="append", default=[])
     discover_command.add_argument("--output", type=Path)
+    project_save = sub.add_parser("project-save")
+    project_save.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    project_save.add_argument("--name", required=True)
+    project_save.add_argument("--directory", type=Path, default=Path("sweeper-projects"))
+    project_load = sub.add_parser("project-load")
+    project_load.add_argument("--name", required=True)
+    project_load.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    project_load.add_argument("--directory", type=Path, default=Path("sweeper-projects"))
+    project_list = sub.add_parser("project-list")
+    project_list.add_argument("--directory", type=Path, default=Path("sweeper-projects"))
     sub.add_parser("translator-status")
     translate_command = sub.add_parser("translate")
     translate_command.add_argument("--input", type=Path, required=True)
@@ -107,6 +172,13 @@ def main() -> int:
     translate_command.add_argument("--source-language", required=True)
     translate_command.add_argument("--target-language", required=True)
     translate_command.add_argument("--engine-command")
+    for name in ("translation-status", "translation-queue", "translation-run"):
+        command = sub.add_parser(name)
+        command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+        if name != "translation-status":
+            command.add_argument("--target-language", required=True)
+        if name == "translation-queue":
+            command.add_argument("--source-language", default="en")
     dock_status = sub.add_parser("dock-status")
     dock_status.add_argument("--config", type=Path, default=Path("sweeper.json"))
     dock_validate = sub.add_parser("dock-validate")
@@ -125,6 +197,22 @@ def main() -> int:
         initialize(args.config.resolve())
         print(json.dumps({"created": str(args.config.resolve()), "next": "edit sources and policy, then run sweeper validate"}, indent=2))
         return 0
+    if args.command == "project-save":
+        target = save_project(args.config.resolve(), args.directory, args.name)
+        print(json.dumps({"saved": str(target), "project": args.name}, indent=2)); return 0
+    if args.command == "project-load":
+        target = load_project(args.directory, args.name, args.config.resolve())
+        print(json.dumps({"loaded": args.name, "config": str(target)}, indent=2)); return 0
+    if args.command == "project-list":
+        directory = args.directory.resolve()
+        projects = []
+        for path in sorted(directory.glob("*.json")) if directory.exists() else []:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            projects.append({"name": raw.get("project", {}).get("name", path.stem),
+                             "file": str(path),
+                             "overallTargetItems": raw.get("project", {}).get("overall_target_items", 0),
+                             "dailyTargetItems": raw.get("project", {}).get("daily_target_items", 0)})
+        print(json.dumps({"projects": projects, "count": len(projects)}, indent=2)); return 0
     if args.command == "daemon":
         if args.interval < 5:
             raise SystemExit("daemon interval must be at least five seconds")
@@ -136,6 +224,16 @@ def main() -> int:
     if args.command == "translate":
         print(json.dumps(translate_file(args.input.resolve(), args.output.resolve(),
             args.source_language, args.target_language, args.engine_command), indent=2)); return 0
+    if args.command in {"translation-status", "translation-queue", "translation-run"}:
+        config = load_config(args.config.resolve())
+        fleet = TranslationFleet(config)
+        try:
+            if args.command == "translation-status": result = fleet.status()
+            elif args.command == "translation-queue":
+                result = fleet.queue(args.target_language, args.source_language)
+            else: result = fleet.run_batch(args.target_language)
+        finally: fleet.close()
+        print(json.dumps(result, indent=2)); return 0
     if args.command == "discover":
         config = load_config(args.config.resolve())
         output = args.output.resolve() if args.output else config.workspace / "discovered-sources.json"
@@ -169,8 +267,9 @@ def main() -> int:
         return 0
     state = State(config.workspace / "state.sqlite3")
     try:
-        if args.command == "plan":
-            print(json.dumps(build_plan(config, state), indent=2))
+        if args.command in {"plan", "sources"}:
+            plan = build_plan(config, state)
+            print(json.dumps(plan if args.command == "plan" else plan["sourceIntelligence"], indent=2))
         else:
             print(json.dumps({"counts": state.counts(), "workspace": str(config.workspace)}, indent=2))
     finally:

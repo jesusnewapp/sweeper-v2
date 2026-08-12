@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Goodies Index</title><link rel="stylesheet" href="styles.css"></head>
+<body><main>
+  <header><p class="eyebrow">STAGED + LIVE INDEX</p><h1>Collection search</h1>
+    <p>Search your project’s indexed records and categories.</p></header>
+  <section class="controls" aria-label="Search controls">
+    <label>Search<input id="query" type="search" placeholder="Search records" autocomplete="off"></label>
+    <label>Category<select id="category"><option value="">All categories</option></select></label>
+    <div class="tabs" role="group" aria-label="Collection scope">
+      <button data-scope="all" aria-pressed="true">All</button>
+      <button data-scope="staged" aria-pressed="false">Staged</button>
+      <button data-scope="live" aria-pressed="false">Live</button>
+    </div>
+  </section>
+  <p id="summary" class="summary" aria-live="polite">Loading index…</p>
+  <section id="results" class="results" aria-label="Search results"></section>
+</main><script src="app.js"></script></body></html>

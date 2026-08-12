@@ -5,6 +5,7 @@ from typing import Iterable
 
 from .model import Config, Source
 from .state import State
+from .intelligence import source_intelligence
 
 
 DEFAULT_POOL = (
@@ -84,8 +85,36 @@ def build_plan(config: Config, state: State) -> dict:
     lane_load = {lane: sum(1 for source in enabled if source.lane == lane)
                  for lane in {source.lane for source in enabled}}
     decisions = []
+    intelligence = source_intelligence(config, state)
+    aggregate_suggestions = [
+        {"domain": row.get("domain"), "url": row.get("url"),
+         "confidence": row.get("confidence"), "nextEvaluation": row.get("nextEvaluation")}
+        for row in intelligence["potentialSites"][:5]
+    ]
+    total_accepted = int(state.counts().get("accepted", 0))
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    accepted_today = state.accepted_since(today.isoformat())
+    first_observed, last_observed = state.observation_bounds()
+    observation_days = 0.0
+    try:
+        first = datetime.fromisoformat(first_observed.replace("Z", "+00:00"))
+        observation_days = round(max(0.0, (datetime.now(timezone.utc) - first).total_seconds() / 86400), 2)
+    except (AttributeError, TypeError, ValueError):
+        pass
+    enabled_sources = [source for source in config.sources if source.enabled]
+    estimated_capacity = sum(source.estimated_eligible_items for source in enabled_sources)
+    estimated_daily = sum(source.estimated_daily_items for source in enabled_sources)
+    unknown_capacity_sources = sum(1 for source in enabled_sources
+                                   if not source.estimated_eligible_items)
+    unknown_daily_sources = sum(1 for source in enabled_sources if not source.estimated_daily_items)
+    known_estimates = len(enabled_sources) - unknown_capacity_sources
+    def percent(numerator: int, denominator: int):
+        return round(min(100.0, numerator * 100.0 / denominator), 2) if denominator else None
     for source in enabled:
         counts = state.source_counts(source.id)
+        accepted = int(counts.get("accepted", 0))
+        failed = int(counts.get("failed", 0))
+        deficit = max(0, source.target_items - accepted) if source.target_items else 0
         candidates = []
         for action in DEFAULT_POOL:
             score, reasons = _score(action, source, counts, lane_load)
@@ -104,19 +133,81 @@ def build_plan(config: Config, state: State) -> dict:
             "breathing": {"mode": mode, "pressureScore": pressure},
             "autonomy": {
                 "advisoryOnly": True,
+                "specificActionNeverForced": True,
                 "mayChooseAlternative": True,
                 "mayCreateLocalCandidate": True,
                 "mustRecordReason": True,
+            },
+            "operatorAssistance": {
+                "mode": source.assistance_mode,
+                "decisionOwner": "sweeper",
+                "operatorCanObserve": source.assistance_mode != "disabled",
+                "operatorCanOfferGuidance": source.assistance_mode != "disabled",
+                "operatorCanChangeSourceOrMode": False,
+                "sweeperMayRequest": source.assistance_mode != "disabled",
+                "sweeperMayAcceptDeclineDeferOrReplace": True,
+                "offerReason": ("pivot-or-exhaustion-risk" if deficit or failed else "standby"),
+                "suggestedNextAggregates": aggregate_suggestions,
             },
         })
     return {
         "schemaVersion": 1,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "model": "fleet-aware-continuation-advisor",
+        "purpose": "Continuously pursue the largest, best-organized collection possible while preserving quality.",
+        "project": {
+            "name": config.project_name,
+            "overallTargetItems": config.overall_target_items,
+            "overallAcceptedItems": total_accepted,
+            "overallRemainingItems": max(0, config.overall_target_items - total_accepted)
+                if config.overall_target_items else None,
+            "dailyTargetItems": config.daily_target_items,
+            "acceptedTodayUtc": accepted_today,
+            "dailyRemainingItems": max(0, config.daily_target_items - accepted_today)
+                if config.daily_target_items else None,
+            "overallProgressPercent": percent(total_accepted, config.overall_target_items),
+            "dailyProgressPercent": percent(accepted_today, config.daily_target_items),
+            "forecast": {
+                "operator": "background-forecast-operator",
+                "calculatedAt": datetime.now(timezone.utc).isoformat(),
+                "updatesEveryDaemonCycle": True,
+                "revisionPolicy": "revise when inventory, yield, overlap, depletion, or source evidence changes",
+                "estimatedHighQualityEligibleItems": estimated_capacity,
+                "estimatedDailyHighQualityItems": estimated_daily,
+                "estimatedOverallGoalCoveragePercent": percent(
+                    total_accepted + estimated_capacity, config.overall_target_items),
+                "estimatedDailyGoalCoveragePercent": percent(
+                    estimated_daily, config.daily_target_items),
+                "unknownCapacitySourceCount": unknown_capacity_sources,
+                "unknownDailyRateSourceCount": unknown_daily_sources,
+                "completeEstimate": unknown_capacity_sources == 0,
+                "advisoryOnly": True,
+                "observationDays": observation_days,
+                "firstLooseEstimateDays": 7,
+                "recommendedMaturityDays": 14,
+                "status": ("estimate-available" if observation_days >= 7 and known_estimates
+                           else "still-calculating"),
+                "approxDaysUntilFirstNumber": round(max(0.0, 7 - observation_days), 2)
+                    if not (observation_days >= 7 and known_estimates) else 0,
+                "approxDaysUntilMatureEstimate": round(max(0.0, 14 - observation_days), 2),
+                "maturity": ("mature" if observation_days >= 14 and unknown_capacity_sources == 0
+                             else "preliminary-loose-estimate" if observation_days >= 7 and known_estimates
+                             else "still-calculating"),
+                "percentageIsApproximate": True,
+                "basis": "operator-provided or adapter-learned high-quality source estimates",
+            },
+            "targetsArePlanningGoals": True,
+            "qualityGatesRemainBinding": True,
+        },
         "pool": list(DEFAULT_POOL),
+        "sourceIntelligence": intelligence,
         "decisions": decisions,
-        "invariants": ["authorization", "rights", "policy", "identity", "hashing",
-                       "deduplication", "review", "single-live-writer"],
+        "mandatoryInvariants": {
+            "quality": ["authorization", "rights", "policy", "identity", "hashing",
+                        "deduplication", "review", "single-live-writer"],
+            "continuation": "seek another safe useful action until explicitly deactivated or temporarily impossible",
+        },
+        "invariants": ["quality", "continuation"],
     }
 
 

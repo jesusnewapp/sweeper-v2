@@ -1,11 +1,18 @@
 import hashlib
 import json
+import os
+import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+PUBLIC_ROOT = Path(__file__).resolve().parents[1]
+if str(PUBLIC_ROOT) not in sys.path:
+    sys.path.insert(0, str(PUBLIC_ROOT))
+
 from sweeper.config import load_config
-from sweeper.cli import initialize
+from sweeper.cli import initialize, load_project, save_project
 from sweeper.cli import daemon
 from sweeper.engine import policy_reason
 from sweeper.engine import run
@@ -13,10 +20,21 @@ from sweeper.dock import cleanup_verified_staging, membership, validate_attestat
 from sweeper.model import Candidate, Policy
 from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
+from sweeper.translation_fleet import TranslationFleet
 from sweeper.continuation import build_plan
+from goodies.indexer import export_json as export_goodies_json, index_jsonl as index_goodies_jsonl
 
 
 class SweeperV2Test(unittest.TestCase):
+    def test_goodies_indexer_is_incremental_and_exports_ui_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); source = root / "records.jsonl"; database = root / "index.sqlite3"
+            source.write_text(json.dumps({"id": "record-1", "title": "Neutral Example",
+                "category": "Operator Category", "text": "searchable material"}) + "\n")
+            self.assertEqual(1, index_goodies_jsonl(database, source, "staged")["indexed"])
+            self.assertEqual(1, index_goodies_jsonl(database, source, "staged")["unchanged"])
+            self.assertEqual(1, export_goodies_json(database, root / "index.json")["recordCount"])
+
     def test_default_two_plus_two_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -63,6 +81,9 @@ class SweeperV2Test(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sweeper.json"
             initialize(path)
+            raw = json.loads(path.read_text())
+            self.assertEqual(0, raw["project"]["overall_target_items"])
+            self.assertEqual(0, raw["project"]["daily_target_items"])
             self.assertTrue(path.exists())
             self.assertTrue((path.parent / "manifests/source.example.jsonl").exists())
             self.assertEqual([], json.loads(path.read_text())["sources"])
@@ -129,6 +150,7 @@ class SweeperV2Test(unittest.TestCase):
             result = run(load_config(config_path))
             self.assertEqual(1, result["counts"]["accepted"])
             self.assertEqual("broken", result["sourceErrors"][0]["source"])
+            self.assertTrue(Path(result["forecastHistory"]).exists())
 
     def test_continuation_pool_retains_partial_catch_and_reaches_target(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -158,6 +180,53 @@ class SweeperV2Test(unittest.TestCase):
         status = capabilities()
         self.assertEqual(90, len(status["pairs"]))
 
+    def test_translation_fleet_validates_stages_hands_off_and_queues_next(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); source = root / "source.txt"
+            source.write_text("A complete source book for translation.")
+            translator = root / "translator.py"
+            translator.write_text("import json,sys\nr=json.load(sys.stdin)\n"
+                "print(json.dumps({'translation':'Texto traducido completo.'}))\n")
+            validator = root / "validator.py"
+            validator.write_text("import json,sys\nr=json.load(sys.stdin)\ne=r['translation']\n"
+                "print(json.dumps({'approved':True,'language':r['target_language'],"
+                "'sha256':e['translation_sha256']}))\n")
+            stager = root / "stager.py"
+            stager.write_text("import json,sys\nr=json.load(sys.stdin)\n"
+                "print(json.dumps({'staged':sorted(r['items'])}))\n")
+            notifier = root / "notifier.py"
+            notifier.write_text("import json,sys\njson.load(sys.stdin)\n"
+                "print(json.dumps({'acknowledged':True}))\n")
+            config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "layout": {"major_slots": 2, "minor_slots": 1}, "policy": {}, "sources": [],
+                "translation": {"enabled": True, "batch_size": 1,
+                    "staging_collection": "translation_stage", "target_languages": ["es"],
+                    "notifier_command": [sys.executable, str(notifier)],
+                    "validator_command": [sys.executable, str(validator)],
+                    "stager_command": [sys.executable, str(stager)]}}))
+            config = load_config(config_path); state = State(config.workspace / "state.sqlite3")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            state.record(source_id="books", item_id="one", url="u", title="Book",
+                status="accepted", updated_at=datetime.now(timezone.utc).isoformat(),
+                digest=digest, size=source.stat().st_size, local_path=str(source)); state.close()
+            variable = engine_variable("en", "es"); previous = os.environ.get(variable)
+            os.environ[variable] = f"{sys.executable} {translator}"
+            try:
+                fleet = TranslationFleet(config)
+                queued = fleet.queue("es")
+                result = fleet.run_batch("es")
+                status = fleet.status(); fleet.close()
+            finally:
+                if previous is None: os.environ.pop(variable, None)
+                else: os.environ[variable] = previous
+            self.assertEqual(1, queued["count"])
+            self.assertEqual(1, result["validated"]); self.assertEqual(1, result["staged"])
+            self.assertEqual(1, status["counts"]["staged"])
+            self.assertTrue(Path(result["handoff"]).exists())
+            self.assertEqual(0, result["nextBatch"]["count"])
+
     def test_staging_dock_requires_exact_hash_bound_attestation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); obj = root / "object"; obj.write_bytes(b"staged")
@@ -182,7 +251,8 @@ class SweeperV2Test(unittest.TestCase):
                 "sources": [
                     {"id": "major", "slot": 1, "lane": "major", "manifest": "a.jsonl"},
                     {"id": "light", "slot": 1, "lane": "minor", "manifest": "b.jsonl",
-                     "target_items": 10}]}))
+                     "target_items": 10, "estimated_eligible_items": 40,
+                     "estimated_daily_items": 8}]}))
             config = load_config(config_path); state = State(config.workspace / "state.sqlite3")
             state.record(source_id="light", item_id="1", url="u", title="t", status="failed",
                          updated_at="now", reason="timeout")
@@ -193,8 +263,73 @@ class SweeperV2Test(unittest.TestCase):
             self.assertEqual(2, len(plan["decisions"]))
             light = next(row for row in plan["decisions"] if row["source"] == "light")
             self.assertTrue(light["autonomy"]["advisoryOnly"])
+            self.assertTrue(light["autonomy"]["specificActionNeverForced"])
+            self.assertEqual(["quality", "continuation"], plan["invariants"])
+            self.assertIn("quality", plan["mandatoryInvariants"])
+            self.assertIn("continuation", plan["mandatoryInvariants"])
+            self.assertEqual(40, plan["project"]["forecast"]["estimatedHighQualityEligibleItems"])
+            self.assertEqual(8, plan["project"]["forecast"]["estimatedDailyHighQualityItems"])
+            self.assertTrue(plan["project"]["forecast"]["advisoryOnly"])
+            self.assertEqual("still-calculating", plan["project"]["forecast"]["status"])
+            self.assertGreater(plan["project"]["forecast"]["approxDaysUntilFirstNumber"], 0)
+            intelligence = plan["sourceIntelligence"]
+            self.assertEqual(2, intelligence["counts"]["active"])
+            self.assertFalse(intelligence["depletion"]["entireInternetExhausted"])
+            self.assertEqual("partial", intelligence["depletion"]["confidence"])
+            self.assertEqual("sweeper", light["operatorAssistance"]["decisionOwner"])
+            self.assertFalse(light["operatorAssistance"]["operatorCanChangeSourceOrMode"])
+            self.assertTrue(light["operatorAssistance"]["sweeperMayAcceptDeclineDeferOrReplace"])
             self.assertEqual("steady", light["breathing"]["mode"])
             self.assertIn(light["recommendedAction"], plan["pool"])
+
+    def test_project_goals_and_saved_profiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "project": {"name": "Codex Project", "overall_target_items": 100_000_000_000,
+                            "daily_target_items": 3000},
+                "layout": {"major_slots": 2, "minor_slots": 2}, "policy": {},
+                "sources": []}))
+            config = load_config(config_path)
+            self.assertEqual(100_000_000_000, config.overall_target_items)
+            saved = save_project(config_path, root / "projects", "Codex Project")
+            self.assertTrue(saved.exists())
+            loaded = load_project(root / "projects", "Codex Project", root / "loaded.json")
+            self.assertEqual(3000, load_config(loaded).daily_target_items)
+            raw = json.loads(config_path.read_text())
+            raw["project"]["overall_target_items"] = 100_000_000_001
+            config_path.write_text(json.dumps(raw))
+            with self.assertRaisesRegex(ValueError, "100,000,000,000"):
+                load_config(config_path)
+
+    def test_mature_forecast_and_ranked_source_intelligence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); config_path = root / "sweeper.json"
+            config_path.write_text(json.dumps({"workspace": "data",
+                "user_agent": "Test Institute (test@example.org)",
+                "project": {"name": "Research", "overall_target_items": 100,
+                            "daily_target_items": 10},
+                "layout": {"major_slots": 2, "minor_slots": 1}, "policy": {},
+                "sources": [{"id": "one", "slot": 1, "lane": "minor", "manifest": "m.jsonl",
+                    "estimated_eligible_items": 80, "estimated_daily_items": 8}]}))
+            config = load_config(config_path); config.workspace.mkdir(parents=True)
+            (config.workspace / "discovered-sources.json").write_text(json.dumps({
+                "candidate_sites": [
+                    {"domain": "small.example", "confidence": "medium",
+                     "estimated_eligible_items": 10},
+                    {"domain": "large.example", "confidence": "high",
+                     "estimated_eligible_items": 1000}], "errors": []}))
+            state = State(config.workspace / "state.sqlite3")
+            old = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+            state.record(source_id="one", item_id="1", url="u", title="t",
+                         status="accepted", updated_at=old)
+            plan = build_plan(config, state); state.close()
+            self.assertEqual("estimate-available", plan["project"]["forecast"]["status"])
+            self.assertEqual("mature", plan["project"]["forecast"]["maturity"])
+            potential = plan["sourceIntelligence"]["potentialSites"]
+            self.assertEqual("large.example", potential[0]["domain"])
+            self.assertEqual(1, potential[0]["advisoryRank"])
 
     def test_cleanup_requires_passing_exact_promotion(self):
         with tempfile.TemporaryDirectory() as directory:
