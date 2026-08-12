@@ -44,7 +44,8 @@ quality, provenance, hashing, deduplication, or continuation rules.
 - Complete substantive rights, relevance, language, completeness, source, and
   quality validation once during acquisition. Bind the accepted membership to
   exact hashes in the staging receipt. Stage-to-live verifies that unchanged
-  attestation; it does not re-download the source or repeat those checks.
+  attestation; it does not re-download the source, repeat those checks, or wait
+  for a second legacy validation-report artifact.
 
 ## Unit loop
 

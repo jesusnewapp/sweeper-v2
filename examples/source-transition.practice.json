@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "practice_mode": true,
+  "sources": {
+    "open-library": {"adapter_command": ["REPLACE_WITH_OPEN_LIBRARY_ADAPTER"]},
+    "internet-archive": {"adapter_command": ["REPLACE_WITH_INTERNET_ARCHIVE_ADAPTER"]},
+    "plymouth-brethren": {
+      "launch_command": ["REPLACE_WITH_CONFIGURED_PLYMOUTH_DIRECT_SOURCE_COMMAND"],
+      "role": "adapter-agnostic-direct-public-domain-complete-text-acquisition"
+    },
+    "library-of-congress": {"adapter_command": ["REPLACE_WITH_LOC_DIGITIZED_BOOKS_ADAPTER"]}
+  },
+  "routes": [
+    {
+      "from": "open-library",
+      "to": "plymouth-brethren",
+      "target": 1000,
+      "allow_partial_on_exhaustion": true,
+      "completion_receipt": "REPLACE_WITH_OPEN_LIBRARY_STAGING_RECEIPT.json",
+      "cleanup_receipt": "REPLACE_WITH_OPEN_LIBRARY_CLEANUP_RECEIPT.json",
+      "checkpoint": "REPLACE_WITH_OPEN_LIBRARY_CHECKPOINT.json",
+      "commands_are_placeholders": true
+    },
+    {
+      "from": "internet-archive",
+      "to": "library-of-congress",
+      "target": 1000,
+      "allow_partial_on_exhaustion": true,
+      "completion_receipt": "REPLACE_WITH_INTERNET_ARCHIVE_STAGING_RECEIPT.json",
+      "cleanup_receipt": "REPLACE_WITH_INTERNET_ARCHIVE_CLEANUP_RECEIPT.json",
+      "checkpoint": "REPLACE_WITH_INTERNET_ARCHIVE_CHECKPOINT.json",
+      "commands_are_placeholders": true
+    }
+  ]
+}

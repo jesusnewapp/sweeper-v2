@@ -230,8 +230,21 @@ needs a continuously draining, serialized stage-to-live writer that verifies the
 unchanged acquisition attestation, removes fresh live overlaps, publishes once,
 verifies the live deployment, cleans only verified payloads, and advances directly
 to the next ready unit. It does not repeat rights, relevance, source, or full-text
-validation already completed during acquisition. Acquisition speed is not useful
+validation already completed during acquisition, and it does not require a
+second legacy validation-report file when the exact acquisition attestation is
+present. Acquisition speed is not useful
 if the verified publication queue is left to grow without bound.
+
+### Receipt-bound source transitions
+
+Source slots can transition cleanly after their current unit finishes. The
+practice model includes editable Open Library, Internet Archive, Plymouth
+Brethren, and Library of Congress placeholders and two example routes. It requires exact
+staging, cleanup, and checkpoint evidence before the old coordinator yields its
+slot; the successor cannot overlap it. A 1,000-item lane may stage a positive
+partial unit only when its receipt proves that the bounded source is exhausted. See
+[`docs/SOURCE_TRANSITION_MODEL.md`](docs/SOURCE_TRANSITION_MODEL.md) and
+[`examples/source-transition.practice.json`](examples/source-transition.practice.json).
 
 ## Nurture collections and survivor continuation
 
