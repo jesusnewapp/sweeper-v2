@@ -1,14 +1,36 @@
 {
   "schema_version": 1,
   "practice_mode": true,
+  "publication_policy": {
+    "desired_batch_size": "REPLACE_WITH_1_TO_1000",
+    "allowed_examples": [100, 250, 500, 1000],
+    "publish_positive_final_remainder": true,
+    "one_serialized_live_writer": true,
+    "live_verify_every_publication_batch": true
+  },
   "sources": {
-    "open-library": {"adapter_command": ["REPLACE_WITH_OPEN_LIBRARY_ADAPTER"]},
-    "internet-archive": {"adapter_command": ["REPLACE_WITH_INTERNET_ARCHIVE_ADAPTER"]},
+    "open-library": {
+      "adapter_command": ["REPLACE_WITH_OPEN_LIBRARY_ADAPTER"],
+      "desired_publication_batch_size": "REPLACE_WITH_1_TO_1000"
+    },
+    "internet-archive": {
+      "adapter_command": ["REPLACE_WITH_INTERNET_ARCHIVE_ADAPTER"],
+      "desired_publication_batch_size": "REPLACE_WITH_1_TO_1000"
+    },
     "plymouth-brethren": {
       "launch_command": ["REPLACE_WITH_CONFIGURED_PLYMOUTH_DIRECT_SOURCE_COMMAND"],
-      "role": "adapter-agnostic-direct-public-domain-complete-text-acquisition"
+      "role": "adapter-agnostic-direct-public-domain-complete-text-acquisition",
+      "desired_publication_batch_size": "REPLACE_WITH_1_TO_1000"
     },
-    "library-of-congress": {"adapter_command": ["REPLACE_WITH_LOC_DIGITIZED_BOOKS_ADAPTER"]}
+    "next-large-public-source": {
+      "launch_command": ["REPLACE_WITH_NEXT_PUBLIC_SOURCE_COMMAND"],
+      "role": "public-direct-source-with-at-least-100000-downloadable-works",
+      "desired_publication_batch_size": "REPLACE_WITH_1_TO_1000"
+    },
+    "library-of-congress": {
+      "adapter_command": ["REPLACE_WITH_LOC_DIGITIZED_BOOKS_ADAPTER"],
+      "desired_publication_batch_size": "REPLACE_WITH_1_TO_1000"
+    }
   },
   "routes": [
     {
@@ -29,6 +51,16 @@
       "completion_receipt": "REPLACE_WITH_INTERNET_ARCHIVE_STAGING_RECEIPT.json",
       "cleanup_receipt": "REPLACE_WITH_INTERNET_ARCHIVE_CLEANUP_RECEIPT.json",
       "checkpoint": "REPLACE_WITH_INTERNET_ARCHIVE_CHECKPOINT.json",
+      "commands_are_placeholders": true
+    },
+    {
+      "from": "plymouth-brethren",
+      "to": "next-large-public-source",
+      "target": 1000,
+      "allow_partial_on_exhaustion": true,
+      "completion_receipt": "REPLACE_WITH_PLYMOUTH_STAGING_RECEIPT.json",
+      "cleanup_receipt": "REPLACE_WITH_PLYMOUTH_CLEANUP_RECEIPT.json",
+      "checkpoint": "REPLACE_WITH_PLYMOUTH_CHECKPOINT.json",
       "commands_are_placeholders": true
     }
   ]

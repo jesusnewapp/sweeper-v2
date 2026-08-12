@@ -245,6 +245,14 @@ slot; the successor cannot overlap it. A 1,000-item lane may stage a positive
 partial unit only when its receipt proves that the bounded source is exhausted. See
 [`docs/SOURCE_TRANSITION_MODEL.md`](docs/SOURCE_TRANSITION_MODEL.md) and
 [`examples/source-transition.practice.json`](examples/source-transition.practice.json).
+The practice chain includes a generic next-large-public-source slot after
+Plymouth so deployments can preselect the next public corpus without coupling
+the transition engine to its acquisition adapter.
+
+The same practice configuration exposes an independent desired publication
+batch-size placeholder globally and per source. Acquisition may stage a larger
+unit while the one live writer publishes configured units from 1 through 1,000,
+including the positive final remainder, and live-verifies each before advancing.
 
 ## Nurture collections and survivor continuation
 

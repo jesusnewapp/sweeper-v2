@@ -12,12 +12,23 @@ Library, Internet Archive, Plymouth Brethren, and Library of Congress. Its
 example routes are Open Library to Plymouth Brethren and Internet Archive to
 Library of Congress. The transition controller launches only the configured
 command; it does not import or depend on a source-specific adapter module.
+The practice chain also reserves Plymouth's next transition for a public source
+with at least 100,000 complete downloadable works, preventing a small source
+from leaving the lane idle after its final remainder stages.
 
 Each route targets 1,000 accepted works. If its bounded source exhausts first,
 the source writes `sourceExhausted: true` into the exact completion receipt and
 the controller stages every positive survivor count before transitioning. An
 empty result is not staged, and a partial unit without exhaustion evidence is
 rejected rather than mistaken for completion.
+
+Publication sizing is independent from acquisition sizing. Set the global
+`publication_policy.desired_batch_size` or a source-level
+`desired_publication_batch_size` placeholder to an integer from 1 through
+1,000. For example, a source may acquire and stage 1,000 works, then the one
+serialized writer may publish ten exact 100-work units. A smaller positive final
+remainder is its own publication unit. Every unit receives a fresh live
+duplicate delta and exact live verification before the writer advances.
 
 Google Books is intentionally excluded from the direct-acquisition practice
 route: availability and download signals alone do not uniformly establish
