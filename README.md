@@ -1,5 +1,9 @@
 # Sweeper V2
 
+<p align="center">
+  <img src="assets/sweeper-logo.png" alt="Sweeper logo: a cybernetic sweeper organizing a stream of data" width="520">
+</p>
+
 Sweeper V2 is a lightweight, source-neutral framework for continuously acquiring and
 preserving large information collections with reproducible provenance. It can
 be configured for institutional archives, law, science, research datasets,
@@ -34,6 +38,22 @@ and optional reviewer workflow.
 **Sweeper V2 was created by Christian Cassarly through Jesus New OS and shared
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**
+
+Christian “Chris” Cassarly originally developed Sweeper for Jesus New OS and is
+now offering the framework publicly. He is using its architecture in pursuit of
+a one-million-book Codex goal within a year. At institutional scale, an authorized
+deployment by a major library, investment firm, law firm, research organization,
+or government agency can acquire, organize, deduplicate, and provenance-bind
+collections whose research, replacement, and operational data value reaches tens
+of millions of dollars per year. That value is the resulting governed data asset
+and preservation work product—not a promise of investment performance.
+
+Sweeper remains available to individual users and developers as well as large
+institutions. Public availability does not grant rights to anyone else's data.
+Christian asks every operator to use Sweeper responsibly: obtain lawful authority,
+honor licenses and access controls, retrieve respectfully, preserve provenance,
+protect sensitive information, and keep human accountability over consequential
+uses. Scale should strengthen those responsibilities, never weaken them.
 
 Sweeper V2 is not tied to Codex, a particular library, Firebase, a subject, or
 an AI vendor. It downloads only sources that the operator configures and is
