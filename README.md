@@ -105,7 +105,16 @@ sweeper project-save --config sweeper.json --name "Codex Project"
 sweeper project-list
 sweeper project-load --name "Codex Project" --config codex-sweeper.json
 sweeper plan --config codex-sweeper.json
+sweeper pivot-enforcer --config codex-sweeper.json --watch --poll-seconds 10
 ```
+
+The optional Pivot Enforcer applies one universal accountability rule: a lane
+that shows no changed progress evidence for 60 seconds must pivot. It never
+chooses the pivot; the source or translator adapter remains free to select its
+best safe continuation. `pivot-enforcer.json` records pending and overdue
+obligations, and a one-shot command exits with status 2 when an adapter owes a
+pivot. Supervisors can use that status to recycle a runner from its checkpoint.
+Rights, quality, staging, validation, and live-writer rules remain unchanged.
 
 Loading refuses to overwrite an existing configuration. This keeps saved
 projects reusable without silently destroying current work.

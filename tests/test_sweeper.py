@@ -22,10 +22,25 @@ from sweeper.state import State
 from sweeper.translation import LANGUAGES, capabilities, engine_variable
 from sweeper.translation_fleet import TranslationFleet
 from sweeper.continuation import build_plan
+from sweeper.enforcer import evaluate
 from goodies.indexer import export_json as export_goodies_json, index_jsonl as index_goodies_jsonl
 
 
 class SweeperV2Test(unittest.TestCase):
+    def test_pivot_enforcer_holds_source_and_translator_to_sixty_seconds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lanes = [{"lane": "source-one", "kind": "source", "required": True,
+                      "counts": {"failed": 1}, "target": 50},
+                     {"lane": "translator", "kind": "translation", "required": True,
+                      "counts": {"queued": 2}}]
+            first = evaluate(root, lanes, current_epoch=1000)
+            self.assertFalse(first["enforcementRequired"])
+            overdue = evaluate(root, lanes, current_epoch=1060)
+            self.assertTrue(overdue["enforcementRequired"])
+            self.assertEqual(["source-one", "translator"], overdue["overdue"])
+            self.assertTrue(overdue["doesNotChoosePivot"])
+
     def test_goodies_indexer_is_incremental_and_exports_ui_data(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); source = root / "records.jsonl"; database = root / "index.sqlite3"

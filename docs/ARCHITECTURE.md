@@ -21,6 +21,11 @@ whole source turns. It cannot alter item eligibility or an active manifest
 checkpoint. Its JSON output is advisory, so adapters may select a safer local
 alternative and record their reason.
 
+The separate Pivot Enforcer watches durable source and translation counts. An
+unchanged lane with pending work becomes overdue after exactly 60 seconds. The
+enforcer records and exposes the obligation but never selects a pivot; adapters
+or supervisors choose the safe continuation and preserve their checkpoints.
+
 The core deliberately does not perform login automation, browser scraping,
 robots circumvention, OCR, archive extraction, format conversion, publication,
 or AI calls. These actions have different security and rights profiles and must

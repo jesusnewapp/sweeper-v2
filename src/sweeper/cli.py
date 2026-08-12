@@ -16,6 +16,7 @@ from .state import State
 from .translation import capabilities, translate_file
 from .translation_fleet import TranslationFleet
 from .continuation import build_plan
+from .enforcer import enforce
 
 
 EXAMPLE = {
@@ -157,6 +158,10 @@ def main() -> int:
     daemon_command.add_argument("--interval", type=float, default=60.0)
     daemon_command.add_argument("--once", action="store_true")
     daemon_command.add_argument("--max-backoff", type=float, default=900.0)
+    enforcer_command = sub.add_parser("pivot-enforcer")
+    enforcer_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    enforcer_command.add_argument("--watch", action="store_true")
+    enforcer_command.add_argument("--poll-seconds", type=float, default=10.0)
     discover_command = sub.add_parser("discover")
     discover_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     discover_command.add_argument("--category", action="append", default=[])
@@ -225,6 +230,16 @@ def main() -> int:
         if args.max_backoff < args.interval:
             raise SystemExit("daemon maximum backoff must be at least the base interval")
         return daemon(args.config.resolve(), args.interval, args.once, args.max_backoff)
+    if args.command == "pivot-enforcer":
+        if args.poll_seconds < 5:
+            raise SystemExit("pivot-enforcer poll interval must be at least five seconds")
+        config = load_config(args.config.resolve())
+        while True:
+            result = enforce(config)
+            print(json.dumps(result, indent=2), flush=True)
+            if not args.watch:
+                return 2 if result["enforcementRequired"] else 0
+            time.sleep(args.poll_seconds)
     if args.command == "translator-status":
         print(json.dumps(capabilities(), indent=2)); return 0
     if args.command == "translate":
