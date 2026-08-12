@@ -60,6 +60,10 @@ Sweeper is an acquisition and preservation foundation. It does not grant
 rights, bypass access controls, infer permission, or publish into an external
 system automatically.
 
+For unattended staging-only operation, see the optional
+[`Overnight Sweeper mini-model`](overnight-sweeper/OVERNIGHT_SWEEPER_MODEL.md).
+It keeps continuous source work separate from live publication authority.
+
 An optional, standalone staged/live search utility is available in
 [`goodies/`](goodies/README.md). Operators supply their own records and categories.
 It is deliberately separate from sweeping and contains no Codex catalog data.
