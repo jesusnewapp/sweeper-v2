@@ -21,6 +21,7 @@ from .model import Candidate, Config, Policy, Source
 from .state import State
 from .nurture import preserve
 from .activity import record as activity_record
+from .frontier import FrontierRetirement
 
 
 def now() -> str:
@@ -162,6 +163,7 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
     config.workspace.mkdir(parents=True, exist_ok=True)
     activity_record(config.workspace,"cycle-start",detail={"project":config.project_name})
     state = State(config.workspace / "state.sqlite3")
+    frontiers = FrontierRetirement(config.workspace)
     source_errors = []
     continuation = []
     breathing = []
@@ -182,7 +184,14 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                 progress({"phase": "source", "source": source.id})
             manifests = [source.manifest, *source.continuation_manifests]
             for manifest_index, manifest in enumerate(manifests):
+                if frontiers.is_retired(source.id, manifest):
+                    activity_record(config.workspace, "source-frontier-retired-skip",
+                        lane=source.id, status="rotate-next-frontier", detail={
+                            "manifest": manifest, "continuationManifest": manifest_index,
+                            "acceptedArtifactsChanged": False})
+                    continue
                 active_source = replace(source, manifest=manifest)
+                frontier_exhausted = False
                 try:
                     for item in candidates(active_source, config.user_agent):
                         if state.status(item.source_id, item.item_id) in {"accepted", "rejected", "duplicate"}:
@@ -209,6 +218,8 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                         if accepted_this_batch >= source.batch_size:
                             batch_complete = True
                             break
+                    else:
+                        frontier_exhausted = True
                 except Exception as error:
                     source_errors.append({"source": source.id, "manifest": manifest,
                         "error": f"{type(error).__name__}: {error}"})
@@ -218,6 +229,12 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                         progress({"phase": "source-error", "source": source.id,
                                   "manifest": manifest, "error": source_errors[-1]["error"]})
                     continue
+                if frontier_exhausted:
+                    retired = frontiers.retire(source.id, manifest)
+                    activity_record(config.workspace, "source-frontier-retired",
+                        lane=source.id, status="rotate-next-frontier", detail={
+                            **retired, "continuationManifest": manifest_index,
+                            "nextAction": "immediate-next-configured-frontier"})
                 if batch_complete:
                     break
                 if source.target_items and state.accepted_count(source.id) >= source.target_items:

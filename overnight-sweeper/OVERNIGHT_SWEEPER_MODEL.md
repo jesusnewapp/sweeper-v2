@@ -1,7 +1,7 @@
 # Overnight Sweeper Mini-Model
 
 Overnight Sweeper is an optional operating model for unattended, continuous,
-staging-only acquisition. It extends Sweeper V2 without changing its rights,
+staging-only acquisition. It extends Web Sweeper without changing its rights,
 quality, provenance, hashing, deduplication, or continuation rules.
 
 ## Boundary
@@ -26,6 +26,11 @@ quality, provenance, hashing, deduplication, or continuation rules.
   internal continuation event, not a successful coordinator exit. Persist the
   next frontier, retain the same incomplete unit and checkpoint, and continue
   immediately. Exit only when the source frontier itself is proven exhausted.
+- Bind a proven-exhausted frozen manifest to its exact fingerprint, retire it
+  from active rotation, and skip it on restart. If a local manifest's bytes
+  change, reactivate it automatically. Source adapters may discard generated
+  frozen candidate files after recording retirement, but must never delete
+  accepted artifacts, receipts, journals, checkpoints, or deduplication memory.
 - Do not perform staging verification inside the staging loop. The separate
   stage-to-live workflow owns independent validation, staging verification,
   and promotion policy.
