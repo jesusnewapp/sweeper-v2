@@ -22,6 +22,11 @@ quality, provenance, hashing, deduplication, or continuation rules.
   enforces the ceiling.
 - After a successful staging upload, record a receipt and immediately begin the
   next source unit.
+- A unit may close because it reached its accepted-item target or because its
+  current source frontier was genuinely exhausted. In either case, stage every
+  eligible survivor already prepared, record the exact survivor count, and
+  advance. Never hold a valid remainder merely because it is smaller than the
+  configured target.
 - Treat exhaustion of one discovery page, cursor window, or partition as an
   internal continuation event, not a successful coordinator exit. Persist the
   next frontier, retain the same incomplete unit and checkpoint, and continue
@@ -48,7 +53,12 @@ quality, provenance, hashing, deduplication, or continuation rules.
    awaiting stage-to-live validation; do not claim it is independently validated.
 7. Write a staging receipt containing source, unit, count, timestamp, artifact
    binding, and an explicit declaration that live production was not mutated.
-8. Immediately begin the next unit.
+8. Commit the completed-unit checkpoint and next frontier before launching the
+   successor. Treat receipt, completion accounting, and successor selection as
+   one recoverable transition so a crash can replay safely without double
+   staging or skipping a frontier.
+9. Immediately begin the next unit. Independent validation is not part of this
+   transition and cannot block acquisition continuation.
 
 The source adapter's acquisition gates remain mandatory. Moving the independent
 audit out of the staging loop does not permit missing rights evidence, unsafe
@@ -62,6 +72,11 @@ keys and remote record IDs, rewrite the exact local membership atomically, stage
 all remaining survivors, record the survivor count in the receipt, and continue.
 If every member is already represented, record a zero-survivor completion and
 advance without uploading or retrying the duplicates.
+
+Apply the same isolation rule to malformed generated candidate files and other
+item-scoped preparation failures: record and discard the failed generated input,
+preserve accepted artifacts and checkpoint evidence, and keep the source lane
+moving. A source-wide integrity failure remains fail-closed.
 
 ## Autonomous scaling
 
@@ -127,6 +142,17 @@ staging throughput cannot silently outrun verified publication capacity.
 - Preserve local artifacts until the operator's separate promotion
   workflow establishes its required remote evidence or explicitly authorizes a
   different cleanup boundary.
+- After an exact staging receipt and remote object-count/binding check succeed,
+  a deployment may evict only re-downloadable source caches belonging to that
+  completed unit. Preserve manuscripts, catalogs, hashes, receipts, checkpoints,
+  rejection memory, and active-unit caches unless the configured recovery path
+  proves those bytes are available elsewhere.
+- Never delete from an active unit. Resolve cleanup targets from completed
+  receipt membership, validate every path beneath the configured cache root,
+  log the reclaimed count and bytes, then recheck free space and worker health.
+- Evaluate projected headroom before beginning the successor unit. The gate must
+  include the configured reserve plus the largest measured temporary/atomic
+  working set; accepted-item count alone is not a disk estimate.
 
 ## Replacement workers
 
@@ -143,7 +169,8 @@ Report these states separately:
 - candidates screened;
 - accepted, rejected, deferred, and duplicate;
 - staging uploads completed;
-- units advanced;
+- units advanced, with automatic advances, crash recoveries, monitor recoveries,
+  and manual restarts counted separately;
 - recovery events and capacity stops;
 - independently validated, staging-verified, published, and live-verified
   counts, which remain deferred in a staging-only run.
