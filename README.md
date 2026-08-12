@@ -55,6 +55,13 @@ honor licenses and access controls, retrieve respectfully, preserve provenance,
 protect sensitive information, and keep human accountability over consequential
 uses. Scale should strengthen those responsibilities, never weaken them.
 
+Christian's operating pattern pairs Sweeper with Codex: Sweeper performs the
+continuous source work, while Codex observes checkpoints, diagnoses failures,
+coordinates recovery, and oversees the separately authorized validation and
+publication boundary. Sweeper remains vendor-neutral and does not require Codex,
+but the two can provide a particularly smooth complementary experience for an
+operator supervising large, long-running acquisition programs.
+
 Sweeper V2 is not tied to Codex, a particular library, Firebase, a subject, or
 an AI vendor. It downloads only sources that the operator configures and is
 intentionally fail-closed when required identity, rights, or policy metadata is
@@ -190,6 +197,30 @@ advance. Continuation means it keeps seeking another safe, useful action until
 the operator explicitly deactivates it or no safe action is currently possible.
 Through those invariants, the fleet continually strives toward the largest,
 best-organized collection it can responsibly build.
+
+### Autonomous unit progression
+
+The simplest reliable source loop is prepare → stage exact survivors → persist
+the outcome → immediately begin the next unit. Individual duplicates and failed
+members are bookkept and quarantined without stopping valid survivors. A depleted
+page or cursor window advances inside the same coordinator; it is not treated as
+a completed source or a reason to wait for an external restart.
+
+Track successful automatic advances separately from manual restarts,
+monitor-triggered recoveries, and crash recoveries. Large unit sizes are earned
+by repeated autonomous progression and end-to-end queue capacity, not by a single
+successful fill. For complete books, use controlled tiers of 1,000, 2,500, 5,000,
+and at most 10,000 per staging unit. A 5–10 continuation observation window may
+justify a controlled next-tier trial; require a longer record, such as 50
+consecutive autonomous advances, before calling a tier established or making it
+the default. Discovery inventories may be much larger than publication units.
+
+Staging and live publication remain separate. A high-throughput acquisition fleet
+needs a continuously draining, serialized stage-to-live writer that validates
+exact membership, removes fresh live overlaps, publishes once, verifies the live
+deployment, cleans only verified payloads, and advances directly to the next ready
+unit. Acquisition speed is not useful if the verified publication queue is left
+to grow without bound.
 
 ## Nurture collections and survivor continuation
 

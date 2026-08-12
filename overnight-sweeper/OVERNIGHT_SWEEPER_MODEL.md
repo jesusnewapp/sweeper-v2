@@ -60,19 +60,31 @@ advance without uploading or retrying the duplicates.
 ## Autonomous scaling
 
 Do not raise a source above its currently proven unit tier merely because one
-large unit fills successfully. Before considering the next tier, require at
-least 50 consecutive autonomous unit continuations for that source adapter.
-Each qualifying continuation must stage the exact eligible survivors, quarantine
-individual duplicates, persist the checkpoint and accounting, and begin the next
-unit without an operator, monitor, or replacement process restarting it.
+large unit fills successfully. Observe at least 5–10 consecutive autonomous unit
+continuations before considering a controlled trial at the next tier, and require
+a longer record such as 50 consecutive autonomous continuations before calling a
+tier established or making it the default. Each qualifying continuation must
+stage the exact eligible survivors, quarantine individual duplicates, persist the
+checkpoint and accounting, and begin the next unit without an operator, monitor,
+or replacement process restarting it.
 
 Track automatic continuations, crash recoveries, monitor-triggered restarts, and
 manual restarts separately. A manual or monitor-triggered restart resets the
-consecutive-autonomy streak. Reaching 50 is evidence for evaluation, not an
-automatic upgrade: disk headroom, source yield, staging latency, dedup behavior,
-stage-to-live throughput, and absence of overlapping workers must also support
-the larger tier. Discovery frontiers may contain millions of documents, but the
-10,000 ceiling applies to complete books packaged in one staging unit.
+consecutive-autonomy streak. Reaching an observation threshold is evidence for
+evaluation, not an automatic upgrade: disk headroom, source yield, staging
+latency, dedup behavior, stage-to-live throughput, and absence of overlapping
+workers must also support the larger tier. Discovery frontiers may contain
+millions of documents, but the 10,000 ceiling applies to complete books packaged
+in one staging unit.
+
+## Stage-to-live drainage
+
+Keep acquisition continuous while one separately authorized writer drains ready
+staged units in deterministic order. For each exact unit, validate its bound
+artifacts, perform the fresh live-delta check, publish once under a serialized
+writer lease, verify the deployment, clean only live-verified staging and local
+payloads, and immediately take the next ready unit. Report queue depth and age so
+staging throughput cannot silently outrun verified publication capacity.
 
 ## Inactivity monitor
 
