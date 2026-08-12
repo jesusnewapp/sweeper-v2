@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .state import State
+from .activity import record as activity_record
 
 
 def now() -> str:
@@ -63,6 +64,8 @@ def validate_attestation(workspace: Path, attestation_path: Path) -> dict:
                 "items": expected, "item_count": len(expected), "excluded_items":excluded,
                 "single_item_never_blocks_continuation":True,"passed": True}
     atomic_json(workspace / "dock-validation.json", evidence)
+    activity_record(workspace,"dock-validation",lane="uploader",status="passed",detail={
+        "approved":len(expected),"excluded":len(excluded)})
     return evidence
 
 
@@ -108,6 +111,8 @@ def promote(workspace: Path, publisher: list[str], verifier: list[str]) -> dict:
                 "items": approved, "published": keys, "verified": keys,
                 "single_item_never_blocks_continuation": True, "passed": True}
     atomic_json(workspace / "dock-promotion.json", evidence)
+    activity_record(workspace,"live-promotion-verified",lane="uploader",status="passed",
+                    detail={"verified":len(keys)})
     return evidence
 
 
@@ -129,4 +134,6 @@ def cleanup_verified_staging(workspace: Path, cleaner: list[str]) -> dict:
                 "deleted": keys, "promotion_sha256": hashlib.sha256(
                     promotion_path.read_bytes()).hexdigest(), "passed": True}
     atomic_json(workspace / "dock-cleanup.json", evidence)
+    activity_record(workspace,"verified-staging-cleanup",lane="uploader",status="passed",
+                    detail={"deleted":len(keys)})
     return evidence

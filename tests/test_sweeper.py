@@ -25,11 +25,23 @@ from sweeper.translation import LANGUAGES, capabilities, engine_variable
 from sweeper.translation_fleet import TranslationFleet
 from sweeper.continuation import build_plan
 from sweeper.nurture import preserve as nurture_preserve
+from sweeper.activity import report as activity_report
 from sweeper.enforcer import evaluate
 from goodies.indexer import export_json as export_goodies_json, index_jsonl as index_goodies_jsonl
 
 
 class SweeperV2Test(unittest.TestCase):
+    def test_activity_log_preserves_current_and_historical_dispositions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state=State(Path(directory)/"state.sqlite3")
+            state.record(source_id="lane",item_id="one",url="u",title="One",status="failed",
+                         reason="temporary",updated_at="now")
+            state.record(source_id="lane",item_id="one",url="u",title="One",status="accepted",
+                         updated_at="later",digest="abc",size=3,local_path="p")
+            state.close(); report=activity_report(Path(directory),10)
+            self.assertEqual(2,report["totalEvents"])
+            self.assertEqual(["failed","accepted"],[row["status"] for row in report["recent"]])
+
     def test_nurture_threshold_preserves_membership_and_raises_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); items={f"source:{n}":hashlib.sha256(str(n).encode()).hexdigest() for n in range(30)}

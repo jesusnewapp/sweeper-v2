@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Optional
+from .activity import record as activity_record
 
 
 SCHEMA = """
@@ -25,6 +26,7 @@ CREATE INDEX IF NOT EXISTS items_sha256 ON items(sha256);
 
 class State:
     def __init__(self, path: Path):
+        self.workspace = path.parent
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path))
         self.db.executescript(SCHEMA)
@@ -48,6 +50,7 @@ class State:
     def record(self, *, source_id: str, item_id: str, url: str, title: str, status: str,
                updated_at: str, reason: str = "", digest: Optional[str] = None,
                size: Optional[int] = None, local_path: Optional[str] = None) -> None:
+        previous=self.status(source_id,item_id)
         with self.db:
             self.db.execute(
                 """INSERT INTO items(source_id,item_id,url,title,status,reason,sha256,bytes,local_path,updated_at)
@@ -58,6 +61,10 @@ class State:
                      updated_at=excluded.updated_at""",
                 (source_id, item_id, url, title, status, reason, digest, size, local_path, updated_at),
             )
+        if previous != status:
+            activity_record(self.workspace,"item-disposition",lane=source_id,status=status,
+                detail={"itemId":item_id,"title":title,"reason":reason,"sha256":digest,
+                        "bytes":size,"previousStatus":previous})
 
     def counts(self) -> dict:
         return {row[0]: row[1] for row in self.db.execute("SELECT status, COUNT(*) FROM items GROUP BY status")}

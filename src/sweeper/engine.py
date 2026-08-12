@@ -20,6 +20,7 @@ from .continuation import build_plan, prioritized_sources
 from .model import Candidate, Config, Policy, Source
 from .state import State
 from .nurture import preserve
+from .activity import record as activity_record
 
 
 def now() -> str:
@@ -159,6 +160,7 @@ def retrieve(item: Candidate, source: Source, config: Config, state: State) -> N
 
 def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> dict:
     config.workspace.mkdir(parents=True, exist_ok=True)
+    activity_record(config.workspace,"cycle-start",detail={"project":config.project_name})
     state = State(config.workspace / "state.sqlite3")
     source_errors = []
     continuation = []
@@ -198,6 +200,8 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
                 except Exception as error:
                     source_errors.append({"source": source.id, "manifest": manifest,
                         "error": f"{type(error).__name__}: {error}"})
+                    activity_record(config.workspace,"source-failure-bookkept",lane=source.id,
+                        status="continuing",detail=source_errors[-1])
                     if progress:
                         progress({"phase": "source-error", "source": source.id,
                                   "manifest": manifest, "error": source_errors[-1]["error"]})
@@ -246,12 +250,15 @@ def run(config: Config, progress: Optional[Callable[[dict], None]] = None) -> di
             {f"{item['source_id']}:{item['item_id']}":str(item['sha256']) for item in accepted_items},
             "accepted",config.nurture_threshold) if accepted_items else {"active":False,"members":0,
                 "threshold":config.nurture_threshold}
-        return {"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
+        result={"completedAt": now(), "counts": state.counts(), "workspace": str(config.workspace),
                 "sweeperBlocked": False,
                 "failureDisposition": "bookkeep-item-or-source-and-continue",
                 "sourceErrors": source_errors, "continuation": continuation,
                 "continuationRequired": bool(continuation), "breathing": breathing,
                 "continuationPlan": str(plan_path), "forecastHistory": str(history_path),
                 "nurture":nurture}
+        activity_record(config.workspace,"cycle-complete",status="continuing",detail={
+            "counts":result["counts"],"sourceErrors":len(source_errors),"nurture":nurture})
+        return result
     finally:
         state.close()

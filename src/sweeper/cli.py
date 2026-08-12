@@ -17,6 +17,8 @@ from .translation import capabilities, translate_file
 from .translation_fleet import TranslationFleet
 from .continuation import build_plan
 from .enforcer import enforce
+from .activity import report as activity_report
+from .activity import record as activity_record
 
 
 EXAMPLE = {
@@ -128,16 +130,21 @@ def daemon(config_path: Path, interval: float, once: bool = False,
                     "checkedAt": datetime.now(timezone.utc).isoformat(), "progress": detail,
                     "consecutiveFailures": consecutive_failures})
             result = run(config, progress=heartbeat)
+            pivot = enforce(config)
+            activity_record(config.workspace,"one-minute-pivot-evaluation",lane="pivot-enforcer",
+                status="action-required" if pivot.get("enforcementRequired") else "progressing",
+                detail={"enforcementRequired":pivot.get("enforcementRequired"),
+                        "overdue":pivot.get("overdue",[])})
             payload.update({"status": "degraded" if result.get("sourceErrors") else "healthy",
-                            "result": result})
+                            "result": result,"pivotEvaluation":pivot,"pivotEverySeconds":60})
         except Exception as error:
             payload.update({"status": "retrying", "error": f"{type(error).__name__}: {error}"})
             consecutive_failures += 1
         else:
             consecutive_failures = 0
-        next_delay = min(max_backoff, interval * (2 ** max(0, consecutive_failures - 1)))
+        next_delay = min(60.0, max_backoff, interval * (2 ** max(0, consecutive_failures - 1)))
         payload.update({"consecutiveFailures": consecutive_failures,
-                        "nextCheckSeconds": next_delay})
+                        "nextCheckSeconds": next_delay,"pivotEverySeconds":60})
         write_health(payload)
         print(json.dumps(payload, indent=2), flush=True)
         if once:
@@ -153,6 +160,9 @@ def main() -> int:
     for name in ("validate", "run", "status", "plan", "sources"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    activity_command = sub.add_parser("activity-log")
+    activity_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    activity_command.add_argument("--limit", type=int, default=100)
     daemon_command = sub.add_parser("daemon")
     daemon_command.add_argument("--config", type=Path, default=Path("sweeper.json"))
     daemon_command.add_argument("--interval", type=float, default=60.0)
@@ -230,6 +240,9 @@ def main() -> int:
         if args.max_backoff < args.interval:
             raise SystemExit("daemon maximum backoff must be at least the base interval")
         return daemon(args.config.resolve(), args.interval, args.once, args.max_backoff)
+    if args.command == "activity-log":
+        config=load_config(args.config.resolve())
+        print(json.dumps(activity_report(config.workspace,args.limit),indent=2)); return 0
     if args.command == "pivot-enforcer":
         if args.poll_seconds < 5:
             raise SystemExit("pivot-enforcer poll interval must be at least five seconds")

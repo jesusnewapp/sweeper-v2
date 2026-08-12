@@ -11,6 +11,7 @@ from .model import Config
 from .state import State
 from .translation import LANGUAGES, translate_file
 from .nurture import preserve
+from .activity import record as activity_record
 
 
 SCHEMA = """
@@ -144,6 +145,9 @@ class TranslationFleet:
             "nurture":nurture,"singleItemNeverBlocksContinuation":True,"failed":failed,
             "sharedOverallUploaderRequired": True, "liveWriterAcquired": False}
         atomic_json(self.root / f"live-handoff-{target}.json", handoff)
+        activity_record(self.config.workspace,"translation-batch-handoff",lane="translator",
+            status="continuing",detail={"targetLanguage":target,"validated":len(keys),
+                "staged":len(staged_keys),"failed":len(failed),"nurture":nurture})
         next_batch = self.queue(target)
         return {"targetLanguage": target, "validated": len(keys), "staged": len(staged_keys),
                 "failed": failed, "handoff": str(self.root / f"live-handoff-{target}.json"),

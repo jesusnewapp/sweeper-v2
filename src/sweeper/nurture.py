@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib, json, os
 from datetime import datetime, timezone
 from pathlib import Path
+from .activity import record as activity_record
 
 
 def now() -> str: return datetime.now(timezone.utc).isoformat()

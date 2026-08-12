@@ -134,6 +134,9 @@ best safe continuation. `pivot-enforcer.json` records pending and overdue
 obligations, and a one-shot command exits with status 2 when an adapter owes a
 pivot. Supervisors can use that status to recycle a runner from its checkpoint.
 Rights, quality, staging, validation, and live-writer rules remain unchanged.
+Daemon mode runs this evaluation every minute automatically. Operators may also
+run `sweeper pivot-enforcer --watch` as a separate watchdog so evaluation remains
+independent while a long-running adapter is busy.
 
 Loading refuses to overwrite an existing configuration. This keeps saved
 projects reusable without silently destroying current work.
@@ -190,6 +193,22 @@ Accordingly, `sweeperBlocked` is always false in cycle results: a failure is a
 recorded disposition plus a continuation decision, never a terminal sweeper
 state. External publication may wait for credentials or a serialized writer,
 but acquisition, preparation, translation, and other lanes continue.
+
+## Activity data log
+
+Every project keeps an append-only `activity-log.jsonl` in its workspace. It
+records cycle starts/completions, item dispositions, source failures and
+continuations, Nurture summaries, translation handoffs, dock validation, live
+verification, and verified staging cleanup. It contains both what is happening
+and what has happened, with UTC timestamps, lanes, outcomes, hashes, counts, and
+reasons. Inspect a compact history with:
+
+```bash
+sweeper activity-log --config sweeper.json --limit 100
+```
+
+The JSONL history is never rewritten by this command and is suitable for later
+indexing, dashboards, audits, or operator reporting.
 
 ## The boat model
 
