@@ -9,7 +9,10 @@ It includes:
 - an authenticated Python controller bridge for desktop and mobile clients;
 - configurable readable-text colors;
 - green, yellow, orange, and red lane states;
+- a color-coded `Gate X/Y · Ns` sweep signal on every lane (six acquisition gates and seven publisher gates);
+- exact counters that refresh independently from the gate timer;
 - an elapsed timer after any displayed progress percentage remains unchanged for 10 seconds;
+- a per-lane Push control that remains disabled until five minutes without counter movement, then invokes only the host-configured trusted `push` action;
 - a four-pad waiting game with a persistent high score and one-time round-20 message;
 - one serialized production-writer invariant.
 
@@ -68,5 +71,6 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.
+- Push is a continuation request, not a permission bypass: no eligible staged unit means nothing is published.
 - The interface does not bypass duplicate screening, publication receipts, or live verification.
 - Staged, uploaded, published, and live-verified counts remain distinct.

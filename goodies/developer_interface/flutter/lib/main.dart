@@ -118,7 +118,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   DateTime _clock = DateTime.now();
   final Map<String, ProgressObservation> _progressObservations = {};
   final Map<String, StageObservation> _stageObservations = {};
-  final Set<String> _loggedStageObservations = {};
+  final Set<String> _loggedProgressObservations = {};
   final List<ActivityEntry> _activity = [];
   final List<ModelSlotDraft> _modelSlots = List.generate(10, (index) {
     if (index == 0) {
@@ -230,18 +230,19 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     final now = DateTime.now();
     if (_hasLiveData) {
       for (final model in _models) {
-        final observation = _stageObservations[model.id];
+        final observation = _progressObservations[model.id];
         if (observation == null ||
             now.difference(observation.since).inSeconds < 10) {
           continue;
         }
-        final key = '${model.id}|${observation.stage}|${observation.since}';
-        if (_loggedStageObservations.add(key)) {
+        final key =
+            '${model.id}|${observation.progressTenthsPercent}|${observation.since}';
+        if (_loggedProgressObservations.add(key)) {
           _activity.insert(
             0,
             ActivityEntry(
               at: now,
-              text: '${model.name} remained in ${model.stage} for 10 seconds',
+              text: '${model.name} had no counter movement for 10 seconds',
               color: model.health == Health.healthy
                   ? const Color(0xff35d07f)
                   : const Color(0xfff5d142),
@@ -316,16 +317,21 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     }
   }
 
-  Future<void> _sendAction(String action) async {
+  Future<void> _sendAction(String action, {String? laneId}) async {
     if (_models.isEmpty) {
       _notice('No configured lane is available');
       return;
     }
     final selectedName = _modelSlots[_selectedSlot].name.trim();
-    final selected = _models.firstWhere(
-      (model) => model.name == selectedName,
-      orElse: () => _models.first,
-    );
+    final selected = laneId == null
+        ? _models.firstWhere(
+            (model) => model.name == selectedName,
+            orElse: () => _models.first,
+          )
+        : _models.firstWhere(
+            (model) => model.id == laneId,
+            orElse: () => _models.first,
+          );
     try {
       final base = _endpoint.endsWith('/')
           ? _endpoint.substring(0, _endpoint.length - 1)
@@ -487,6 +493,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                                   stageObservation:
                                       _stageObservations[model.id],
                                   now: _clock,
+                                  onPush: () =>
+                                      _sendAction('push', laneId: model.id),
                                 ),
                               ),
                             )
@@ -1116,6 +1124,77 @@ class StageObservation {
   final DateTime since;
 }
 
+class GatePosition {
+  const GatePosition(this.current, this.total);
+
+  final int current;
+  final int total;
+}
+
+GatePosition gatePositionFor(ModelView model) {
+  final stage = model.stage.toLowerCase().replaceAll('_', '-');
+  if (model.id == 'publisher') {
+    if (stage.contains('ready for next') ||
+        stage.contains('listening for next') ||
+        stage.contains('queue-advance') ||
+        stage.contains('final-live-recount') ||
+        stage.contains('receipt') ||
+        stage == 'complete') {
+      return const GatePosition(7, 7);
+    }
+    if (stage.contains('live-verification') ||
+        stage.contains('verification') ||
+        stage.contains('verify')) {
+      return const GatePosition(6, 7);
+    }
+    if (stage.contains('firestore') ||
+        stage.contains('publication-complete') ||
+        stage.contains('publish')) {
+      return const GatePosition(5, 7);
+    }
+    if (stage.contains('storage-upload') || stage.contains('upload')) {
+      return const GatePosition(4, 7);
+    }
+    if (stage.contains('room-allocation') ||
+        stage.contains('duplicate') ||
+        stage.contains('dedup')) {
+      return const GatePosition(3, 7);
+    }
+    if (stage.contains('fresh-live-delta') || stage.contains('live-delta')) {
+      return const GatePosition(2, 7);
+    }
+    return const GatePosition(1, 7);
+  }
+
+  if (stage.contains('batch-complete') ||
+      stage.contains('campaign-complete') ||
+      stage.contains('rollover') ||
+      stage == 'complete') {
+    return const GatePosition(6, 6);
+  }
+  if (stage.contains('staging-verification') ||
+      stage.contains('verification') ||
+      stage.contains('verify')) {
+    return const GatePosition(5, 6);
+  }
+  if (stage.contains('staging-upload') ||
+      stage.contains('storage-upload') ||
+      stage.contains('firestore') ||
+      stage.contains('reconcile')) {
+    return const GatePosition(4, 6);
+  }
+  if (stage.contains('validat') || stage.contains('review')) {
+    return const GatePosition(3, 6);
+  }
+  if (stage.contains('prepare') ||
+      stage.contains('discover') ||
+      stage.contains('acquir') ||
+      stage.contains('import')) {
+    return const GatePosition(2, 6);
+  }
+  return const GatePosition(1, 6);
+}
+
 class ModelCard extends StatelessWidget {
   const ModelCard({
     super.key,
@@ -1123,11 +1202,13 @@ class ModelCard extends StatelessWidget {
     required this.observation,
     required this.stageObservation,
     required this.now,
+    required this.onPush,
   });
   final ModelView model;
   final ProgressObservation? observation;
   final StageObservation? stageObservation;
   final DateTime now;
+  final VoidCallback onPush;
 
   Color get color => switch (model.health) {
     Health.healthy => const Color(0xff35d07f),
@@ -1145,6 +1226,9 @@ class ModelCard extends StatelessWidget {
     final stageHeldFor = stageObservation == null
         ? Duration.zero
         : now.difference(stageObservation!.since);
+    final gate = gatePositionFor(model);
+    final gateSeconds = max(0, stageHeldFor.inSeconds);
+    final pushReady = heldFor.inSeconds >= 300;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -1175,19 +1259,46 @@ class ModelCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    model.stage,
-                    textAlign: TextAlign.end,
-                    softWrap: true,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: color,
-                      fontWeight: FontWeight.w700,
-                    ),
+                Container(
+                  key: ValueKey('gate-signal-${model.id}'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: color.withValues(alpha: 0.55)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.radar_rounded, size: 12, color: color),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Gate ${gate.current}/${gate.total} · ${gateSeconds}s',
+                        key: ValueKey('gate-text-${model.id}'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              model.stage,
+              textAlign: TextAlign.end,
+              softWrap: true,
+              style: TextStyle(
+                fontSize: 11,
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 14),
             Text(
@@ -1231,20 +1342,41 @@ class ModelCard extends StatelessWidget {
                 ],
               ),
             ],
-            if (stageHeldFor.inSeconds >= 10) ...[
-              const SizedBox(height: 4),
-              Text(
-                'In ${model.stage} for ${formatDuration(stageHeldFor)}',
-                key: ValueKey('stage-duration-${model.id}'),
-                softWrap: true,
-                style: const TextStyle(fontSize: 11, color: Color(0xff83a891)),
-              ),
-            ],
             const SizedBox(height: 5),
             Text(
               model.detail,
               softWrap: true,
               style: const TextStyle(fontSize: 12, color: Color(0xff83a891)),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Tooltip(
+                message: pushReady
+                    ? 'Request the next canonical stage for this lane'
+                    : 'Available after five minutes with no counter movement',
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: pushReady
+                        ? [
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : const [],
+                  ),
+                  child: FilledButton.tonalIcon(
+                    key: ValueKey('push-${model.id}'),
+                    onPressed: pushReady ? onPush : null,
+                    icon: const Icon(Icons.fast_forward_rounded, size: 16),
+                    label: Text(pushReady ? 'Push' : 'Push · 5m'),
+                  ),
+                ),
+              ),
             ),
           ],
         ),

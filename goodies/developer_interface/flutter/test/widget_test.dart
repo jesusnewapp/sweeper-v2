@@ -57,13 +57,87 @@ void main() {
               since: since,
             ),
             now: since.add(const Duration(seconds: 11)),
+            onPush: () {},
           ),
         ),
       ),
     );
     expect(find.textContaining('At 100.0% for'), findsOneWidget);
-    expect(find.textContaining('In Live verification for'), findsOneWidget);
+    expect(find.text('Gate 6/7 · 11s'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('acquisition search gate has a timed health signal', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'library-of-congress',
+              name: 'Library of Congress',
+              stage: 'prepare',
+              accepted: 0,
+              target: 2000,
+              uploaded: 0,
+              health: Health.watch,
+              detail: 'Searching and qualifying candidates',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 0,
+              since: since,
+            ),
+            stageObservation: StageObservation(stage: 'prepare', since: since),
+            now: since.add(const Duration(seconds: 37)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Gate 2/6 · 37s'), findsOneWidget);
+    expect(find.byIcon(Icons.radar_rounded), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('push remains disabled until five minutes without movement', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    var pushes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'publisher',
+              name: 'Publisher',
+              stage: 'Listening for next exact staged unit',
+              accepted: 853,
+              target: 853,
+              uploaded: 853,
+              health: Health.watch,
+              detail: '0 ready',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 1000,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'Listening for next exact staged unit',
+              since: since,
+            ),
+            now: since.add(const Duration(minutes: 5)),
+            onPush: () => pushes++,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('push-publisher')));
+    expect(pushes, 1);
+    expect(find.text('Push'), findsOneWidget);
+    expect(find.text('Gate 7/7 · 300s'), findsOneWidget);
   });
 
   testWidgets('four model slots expose name and connector fields', (

@@ -43,7 +43,8 @@ class Interface(tk.Tk):
         self.game_message = tk.StringVar(value="Press Start, watch the pads, then repeat.")
         self.score_text = tk.StringVar(value=self._score_label())
         self.progress_observations: dict[str, tuple[str, float]] = {}
-        self.progress_labels: dict[str, tuple[dict, tk.StringVar]] = {}
+        self.stage_observations: dict[str, tuple[str, float]] = {}
+        self.progress_labels: dict[str, tuple[dict, tk.StringVar, tk.StringVar, ttk.Button]] = {}
         self._build()
         self.after(1000, self._tick_progress)
 
@@ -153,9 +154,10 @@ class Interface(tk.Tk):
         except (urllib.error.URLError, ValueError, OSError) as error:
             self.message.set(f"Connection failed · {error}")
 
-    def action(self, name: str) -> None:
+    def action(self, name: str, lane_id: Optional[str] = None) -> None:
         try:
-            self._request("/api/action", {"action": name, "lane": self.selected_lane.get()})
+            lane = lane_id or self.selected_lane.get()
+            self._request("/api/action", {"action": name, "lane": lane})
             self.message.set(f"{name.title()} request accepted")
         except (urllib.error.URLError, ValueError, OSError) as error:
             self.message.set(f"Action not accepted · {error}")
@@ -167,6 +169,18 @@ class Interface(tk.Tk):
         card.pack(fill="x", pady=(0, 8))
         color = colors.get(lane.get("health"), "#f5d142")
         tk.Label(card, text="●", bg=PANEL, fg=color).pack(side="left")
+        controls = tk.Frame(card, bg=PANEL)
+        controls.pack(side="right", fill="y", padx=(8, 0))
+        gate_text = tk.StringVar(value=self._gate_text(lane))
+        tk.Label(controls, textvariable=gate_text, bg=PANEL, fg=color,
+                 font=("Helvetica", 9, "bold")).pack(anchor="e")
+        push = ttk.Button(
+            controls,
+            text="Push · 5m",
+            state="disabled",
+            command=lambda lane_id=str(lane.get("id", "")): self.action("push", lane_id),
+        )
+        push.pack(side="bottom", anchor="e", pady=(8, 0))
         body = tk.Frame(card, bg=PANEL)
         body.pack(side="left", fill="x", expand=True, padx=8)
         tk.Label(body, text=lane.get("name", "Lane"), bg=PANEL, fg=self.text_color,
@@ -176,7 +190,50 @@ class Interface(tk.Tk):
         progress_text = tk.StringVar(value=self._progress_text(lane))
         tk.Label(body, textvariable=progress_text, bg=PANEL, fg=MUTED,
                  justify="left", wraplength=650).pack(anchor="w")
-        self.progress_labels[str(lane.get("id", lane.get("name", "lane")))] = (lane, progress_text)
+        self.progress_labels[str(lane.get("id", lane.get("name", "lane")))] = (
+            lane, progress_text, gate_text, push
+        )
+
+    def _gate_text(self, lane: dict) -> str:
+        lane_id = str(lane.get("id", lane.get("name", "lane")))
+        stage = str(lane.get("stage", "unknown"))
+        current = self.stage_observations.get(lane_id)
+        now = time.monotonic()
+        if current is None or current[0] != stage:
+            current = (stage, now)
+            self.stage_observations[lane_id] = current
+        normalized = stage.lower().replace("_", "-")
+        if lane_id == "publisher":
+            total = 7
+            if any(value in normalized for value in ("ready for next", "listening for next", "queue-advance", "receipt", "complete")):
+                gate = 7
+            elif "verification" in normalized or "verify" in normalized:
+                gate = 6
+            elif "firestore" in normalized or "publication" in normalized or "publish" in normalized:
+                gate = 5
+            elif "upload" in normalized:
+                gate = 4
+            elif "duplicate" in normalized or "dedup" in normalized or "room-allocation" in normalized:
+                gate = 3
+            elif "live-delta" in normalized:
+                gate = 2
+            else:
+                gate = 1
+        else:
+            total = 6
+            if any(value in normalized for value in ("batch-complete", "campaign-complete", "rollover")) or normalized == "complete":
+                gate = 6
+            elif "verification" in normalized or "verify" in normalized:
+                gate = 5
+            elif any(value in normalized for value in ("staging-upload", "storage-upload", "firestore", "reconcile")):
+                gate = 4
+            elif "validat" in normalized or "review" in normalized:
+                gate = 3
+            elif any(value in normalized for value in ("prepare", "discover", "acquir", "import")):
+                gate = 2
+            else:
+                gate = 1
+        return f"◉ Gate {gate}/{total} · {int(now - current[1])}s"
 
     def _progress_text(self, lane: dict) -> str:
         lane_id = str(lane.get("id", lane.get("name", "lane")))
@@ -198,8 +255,14 @@ class Interface(tk.Tk):
         return f"At {key}% for {duration}"
 
     def _tick_progress(self) -> None:
-        for lane, label in self.progress_labels.values():
+        for lane, label, gate_label, push in self.progress_labels.values():
             label.set(self._progress_text(lane))
+            gate_label.set(self._gate_text(lane))
+            lane_id = str(lane.get("id", lane.get("name", "lane")))
+            progress = self.progress_observations.get(lane_id)
+            ready = progress is not None and time.monotonic() - progress[1] >= 300
+            push.configure(state="normal" if ready else "disabled",
+                           text="Push" if ready else "Push · 5m")
         self.after(1000, self._tick_progress)
 
     def _choose_color(self) -> None:

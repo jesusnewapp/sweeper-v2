@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -49,6 +50,45 @@ def _count(value: Any) -> int:
         return 0
 
 
+def _publication_progress(root: Path) -> Dict[str, Any]:
+    """Read exact progress, falling back to exact counters emitted by older writers."""
+    progress = _read_json(root / "publication_progress.json")
+    try:
+        log = (root / "promotion.log").read_text(encoding="utf-8")
+    except OSError:
+        return progress
+    value: Dict[str, Any] = {"phase": "fresh-live-delta"}
+    delta = list(re.finditer(
+        r"Fresh live delta checked (\d+) published books; removed (\d+), retained (\d+)\.",
+        log,
+    ))
+    if delta:
+        match = delta[-1]
+        value.update({"phase": "room-allocation", "duplicateRemoved": int(match.group(2)),
+                      "publishable": int(match.group(3))})
+    uploads = list(re.finditer(r"Uploaded (\d+)/(\d+)", log))
+    if uploads:
+        # Legacy concurrent writers emitted completed item indexes out of
+        # order. The maximum is a monotonic observed marker, not a fabricated
+        # completion count. New writers persist an exact atomic counter above.
+        maximum = max(int(match.group(1)) for match in uploads)
+        target = int(uploads[-1].group(2))
+        value.update({"phase": "storage-upload", "uploaded": maximum,
+                      "uploadTarget": target, "legacyObservedMarker": True})
+    published = list(re.finditer(r"Published (\d+) new or changed Codex records\.", log))
+    if published:
+        value.update({"phase": "publication-complete",
+                      "published": int(published[-1].group(1))})
+        if uploads:
+            value["uploaded"] = int(uploads[-1].group(2))
+    verified = list(re.finditer(r"Verified (\d+)/(\d+) live Codex books\.", log))
+    if verified:
+        match = verified[-1]
+        value.update({"phase": "live-verification", "liveVerified": int(match.group(1)),
+                      "verificationTarget": int(match.group(2))})
+    return {**value, **progress}
+
+
 class SweeperController:
     """Loads trusted local state and exposes allow-listed control actions."""
 
@@ -88,15 +128,32 @@ class SweeperController:
             accepted = _count(state["membershipReconciliation"].get("catalogMembers"))
         target = int(_first(state, ("currentBatchSize", "batchSize", "target"), definition.get("target", 0)) or 0)
         uploaded = int(_first(progress, ("uploaded", "uploadedCount", "verified"), 0) or 0)
-        stage = str(_first(state, ("stage", "status"), "inactive"))
-        updated = _first(
+        progress_phase = str(progress.get("phase", ""))
+        stage = progress_phase if progress_phase and progress_phase != "complete" else str(
+            _first(state, ("stage", "status"), "inactive")
+        )
+        state_updated = _first(
             checkpoint,
             ("updatedAt", "checkpointTimestamp", "lastUpdated"),
             _first(state, ("updatedAt", "checkpointTimestamp"), ""),
         )
+        progress_updated = _first(progress, ("updatedAt", "checkpointTimestamp"), "")
+        state_observed = _timestamp(state_updated)
+        progress_observed = _timestamp(progress_updated)
+        updated = (
+            progress_updated
+            if progress_observed and (not state_observed or progress_observed > state_observed)
+            else state_updated
+        )
         observed = _timestamp(updated)
         age = (datetime.now(timezone.utc) - observed).total_seconds() if observed else None
-        running = str(state.get("status", "")).lower() == "running"
+        progress_active = bool(
+            progress_phase
+            and progress_phase != "complete"
+            and age is not None
+            and age <= 300
+        )
+        running = str(state.get("status", "")).lower() == "running" or progress_active
         if not running:
             health = "failed"
         elif age is None or age > int(definition.get("redAfterSeconds", 3600)):
@@ -105,15 +162,24 @@ class SweeperController:
             health = "watch"
         else:
             health = "healthy"
+        display_accepted = accepted
+        display_target = target
+        detail = definition.get("detail", f"State: {state_path.name}")
+        if progress_active:
+            display_accepted = uploaded
+            display_target = int(progress.get("total") or accepted or target)
+            detail = (
+                f"{accepted}/{target} accepted · exact staging upload"
+            )
         return {
             "id": definition.get("id", definition.get("name", "lane")),
             "name": definition.get("name", "Unnamed lane"),
             "stage": stage,
-            "accepted": accepted,
-            "target": target,
+            "accepted": display_accepted,
+            "target": display_target,
             "uploaded": uploaded,
             "health": health,
-            "detail": definition.get("detail", f"State: {state_path.name}"),
+            "detail": detail,
             "updatedAt": updated,
             "currentRoot": current_root,
         }
@@ -130,23 +196,44 @@ class SweeperController:
             catalog = _read_json(root / "catalog.json").get("books", [])
             publication = _read_json(root / "publication_verification.json")
             promotion = _read_json(root / "promotion_validation.json")
+            progress = _publication_progress(root)
             accepted = _count(catalog)
-            published = _count(publication.get("published"))
-            verified = _count(promotion.get("liveVerified", publication.get("verified")))
+            published = _count(progress.get("published", publication.get("published")))
+            verified = _count(
+                progress.get("liveVerified", promotion.get("liveVerified", publication.get("verified")))
+            )
+            duplicate_removed = _count(progress.get("duplicateRemoved"))
+            uploaded = _count(progress.get("uploaded"))
             target = accepted
             updated = _first(
                 promotion,
                 ("checkedAt", "completedAt"),
                 _first(publication, ("checkedAt", "completedAt"), state.get("checkedAt", "")),
             )
-            stage = str(state.get("currentAction", "publishing"))
+            stage = str(progress.get("phase") or state.get("currentAction", "publishing"))
+            phase_count = {
+                "storage-upload": uploaded,
+                "publication-complete": published,
+                "live-verification": verified,
+                "complete": verified,
+            }.get(stage, 0)
+            target = {
+                "storage-upload": _count(progress.get("uploadTarget")) or accepted,
+                "publication-complete": _count(progress.get("publishable")) or accepted,
+                "live-verification": _count(progress.get("verificationTarget")) or accepted,
+                "complete": _count(progress.get("verificationTarget")) or accepted,
+            }.get(stage, accepted)
         else:
-            published = _count(latest.get("published"))
-            verified = _count(latest.get("liveVerified"))
-            accepted = published
-            target = published or int(definition.get("target", 100))
+            last_published = _count(latest.get("published"))
+            last_verified = _count(latest.get("liveVerified"))
+            published = 0
+            verified = 0
+            accepted = 0
+            target = 0
             updated = latest.get("completedAt") or state.get("checkedAt", "")
-            stage = "Ready for next unit"
+            duplicate_removed = 0
+            uploaded = 0
+            phase_count = 0
         observed = _timestamp(state.get("checkedAt"))
         age = (datetime.now(timezone.utc) - observed).total_seconds() if observed else None
         running = bool(state.get("listenerActive"))
@@ -159,6 +246,16 @@ class SweeperController:
         else:
             health = "healthy"
         queue = state.get("queue") if isinstance(state.get("queue"), dict) else {}
+        pending_units = _count(queue.get("pendingUnits"))
+        parked_units = _count(queue.get("parkedUnchanged"))
+        preflight_units = _count(queue.get("bookkeptPreflight"))
+        ready_units = max(0, pending_units - parked_units - preflight_units)
+        if not current:
+            stage = (
+                "Ready for next exact staged unit"
+                if ready_units > 0
+                else "Listening for next exact staged unit"
+            )
         continuation = (
             state.get("automaticContinuation")
             if isinstance(state.get("automaticContinuation"), dict)
@@ -168,16 +265,23 @@ class SweeperController:
             "id": definition.get("id", "publisher"),
             "name": definition.get("name", "Stage-to-live publisher"),
             "stage": stage,
-            "accepted": accepted,
+            "accepted": phase_count,
             "target": target,
-            "uploaded": verified,
+            "uploaded": uploaded,
             "published": published,
             "liveVerified": verified,
             "health": health,
             "detail": (
-                f"{_count(queue.get('pendingUnits'))} queued · "
-                f"{_count(continuation.get('successfulAdvances'))} automatic advances"
+                f"{accepted} prepared · {duplicate_removed} duplicates removed · "
+                f"{uploaded} uploaded · {published} published · {verified} live-verified · "
+                f"{ready_units} ready · {parked_units} parked · {preflight_units} preflight"
+                if current else
+                f"Last completed: {last_published} published · {last_verified} live-verified · "
+                f"{ready_units} ready · {parked_units} parked · {preflight_units} preflight"
             ),
+            "queueReady": ready_units,
+            "queueParked": parked_units,
+            "queuePreflight": preflight_units,
             "updatedAt": updated,
             "currentRoot": current_root,
             "progressSince": latest.get("completedAt") if not current else None,
