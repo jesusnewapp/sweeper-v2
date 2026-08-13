@@ -529,6 +529,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                                   stageObservation:
                                       _stageObservations[model.id],
                                   now: _clock,
+                                  onEmergencyReset: () =>
+                                      _sendAction('reset', laneId: model.id),
                                   onPush: () =>
                                       _sendAction('push', laneId: model.id),
                                 ),
@@ -1433,12 +1435,14 @@ class ModelCard extends StatelessWidget {
     required this.observation,
     required this.stageObservation,
     required this.now,
+    this.onEmergencyReset,
     required this.onPush,
   });
   final ModelView model;
   final ProgressObservation? observation;
   final StageObservation? stageObservation;
   final DateTime now;
+  final VoidCallback? onEmergencyReset;
   final VoidCallback onPush;
 
   Color get color => switch (model.health) {
@@ -1972,34 +1976,54 @@ class ModelCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: Color(0xff83a891)),
             ),
             const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Tooltip(
-                message: pushReady
-                    ? 'Request the next canonical stage for this lane'
-                    : 'Available after five minutes with no counter movement',
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: pushReady
-                        ? [
-                            BoxShadow(
-                              color: color.withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : const [],
-                  ),
-                  child: FilledButton.tonalIcon(
-                    key: ValueKey('push-${model.id}'),
-                    onPressed: pushReady ? onPush : null,
-                    icon: const Icon(Icons.fast_forward_rounded, size: 16),
-                    label: Text(pushReady ? 'Push' : 'Push · 5m'),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runAlignment: WrapAlignment.spaceBetween,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Tooltip(
+                  message:
+                      'Request an immediate, receipt-preserving lane reset',
+                  child: OutlinedButton.icon(
+                    key: ValueKey('emergency-reset-${model.id}'),
+                    onPressed: onEmergencyReset,
+                    icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                    label: const Text('Emergency reset'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xffff8a3d),
+                      side: const BorderSide(color: Color(0xffff8a3d)),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
                 ),
-              ),
+                Tooltip(
+                  message: pushReady
+                      ? 'Request the next canonical stage for this lane'
+                      : 'Available after five minutes with no counter movement',
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: pushReady
+                          ? [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.35),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : const [],
+                    ),
+                    child: FilledButton.tonalIcon(
+                      key: ValueKey('push-${model.id}'),
+                      onPressed: pushReady ? onPush : null,
+                      icon: const Icon(Icons.fast_forward_rounded, size: 16),
+                      label: Text(pushReady ? 'Push' : 'Push · 5m'),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
