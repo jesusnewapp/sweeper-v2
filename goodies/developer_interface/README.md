@@ -71,6 +71,9 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
 - Inactivity is multi-signal: accepted, discovery-page/cursor, candidate-inventory,
   stage, upload, publication, verification, checkpoint timestamp, and receipt
   movement all count. A quiet accepted counter cannot terminate active discovery.
+- Source adapters whose page journal is separate from their lane state can list
+  trusted `progressPaths`; file-size or modification movement then resets the
+  progress clock without parsing or exposing the journal contents.
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.

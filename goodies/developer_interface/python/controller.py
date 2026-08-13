@@ -178,6 +178,18 @@ class SweeperController:
         display_accepted = accepted
         display_target = target
         detail = definition.get("detail", f"State: {state_path.name}")
+        supplemental_progress = []
+        for value in definition.get("progressPaths", []):
+            try:
+                path = self._path(str(value))
+                metadata = path.stat()
+                supplemental_progress.append({
+                    "path": str(value),
+                    "size": metadata.st_size,
+                    "modifiedNs": metadata.st_mtime_ns,
+                })
+            except (OSError, TypeError):
+                supplemental_progress.append({"path": str(value), "missing": True})
         if progress_active:
             display_accepted = uploaded
             display_target = int(progress.get("total") or accepted or target)
@@ -210,6 +222,7 @@ class SweeperController:
                 "stateUpdatedAt": state.get("updatedAt", ""),
                 "checkpointUpdatedAt": state_updated,
                 "uploadUpdatedAt": progress_updated,
+                "supplemental": supplemental_progress,
             },
         }
 

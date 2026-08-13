@@ -37,6 +37,27 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(44, second_lane["accepted"])
             self.assertNotEqual(first, second_lane["progressSince"])
 
+    def test_supplemental_discovery_file_resets_progress_clock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "discovery",
+                "acceptedInCurrentBatch": 6, "currentBatchSize": 2000,
+            }), encoding="utf-8")
+            progress = root / "discovery.partial.json"
+            progress.write_text("page-149", encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json",
+                           "progressPaths": ["discovery.partial.json"]}],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            first = controller.status()["lanes"][0]["progressSince"]
+            progress.write_text("page-150-with-more-evidence", encoding="utf-8")
+            second = controller.status()["lanes"][0]["progressSince"]
+            self.assertNotEqual(first, second)
+
     def test_status_reads_lane_without_inventing_live_counts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
