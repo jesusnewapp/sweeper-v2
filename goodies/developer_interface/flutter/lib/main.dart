@@ -1420,6 +1420,7 @@ GatePosition gatePositionFor(ModelView model) {
     return const GatePosition(3, 6);
   }
   if (stage.contains('prepare') ||
+      stage.contains('fresh-live-export') ||
       stage.contains('discover') ||
       stage.contains('acquir') ||
       stage.contains('import')) {

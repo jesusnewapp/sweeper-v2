@@ -15,6 +15,21 @@ Future<void> pumpAt(WidgetTester tester, Size size) async {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('live-index refresh stays in the active discovery gate', () {
+    final model = ModelView.fromJson({
+      'id': 'open-library-stories',
+      'name': 'Open Library 2',
+      'stage': 'fresh-live-export',
+      'accepted': 0,
+      'target': 2000,
+      'uploaded': 0,
+      'health': 'healthy',
+    });
+    final gate = gatePositionFor(model);
+    expect(gate.current, 2);
+    expect(gate.total, 6);
+  });
+
   testWidgets('phone layout renders without overflow', (tester) async {
     await pumpAt(tester, const Size(390, 844));
     expect(find.text('WEB SWEEPER'), findsOneWidget);
