@@ -1378,6 +1378,11 @@ class GatePosition {
 }
 
 String pipelineStageLabel(ModelView model, GatePosition gate) {
+  final stages = pipelineStagesFor(model);
+  return stages[(gate.current - 1).clamp(0, stages.length - 1)];
+}
+
+List<String> pipelineStagesFor(ModelView model) {
   final sourceStages = [
     'Initialize',
     'Discover / acquire',
@@ -1395,8 +1400,7 @@ String pipelineStageLabel(ModelView model, GatePosition gate) {
     'Live verification',
     'Complete',
   ];
-  final stages = model.id == 'publisher' ? publisherStages : sourceStages;
-  return stages[(gate.current - 1).clamp(0, stages.length - 1)];
+  return model.id == 'publisher' ? publisherStages : sourceStages;
 }
 
 GatePosition gatePositionFor(ModelView model) {
@@ -1643,6 +1647,93 @@ class ModelCard extends StatelessWidget {
     );
   }
 
+  void _showExactStage(BuildContext context, GatePosition gate) {
+    final stages = pipelineStagesFor(model);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: ValueKey('exact-stage-dialog-${model.id}'),
+        title: Text('Exact stage · ${model.name}'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Live controller stage: ${model.stage}',
+                key: ValueKey('exact-stage-raw-${model.id}'),
+                style: const TextStyle(color: Color(0xff83a891)),
+              ),
+              const SizedBox(height: 12),
+              for (var index = 0; index < stages.length; index++)
+                Container(
+                  key: ValueKey('exact-stage-${model.id}-${index + 1}'),
+                  margin: const EdgeInsets.only(bottom: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: index + 1 == gate.current
+                        ? color.withValues(alpha: 0.18)
+                        : const Color(0xff10271c),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: index + 1 == gate.current
+                          ? color
+                          : const Color(0xff254c38),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        index + 1 == gate.current
+                            ? Icons.play_arrow_rounded
+                            : index + 1 < gate.current
+                            ? Icons.check_rounded
+                            : Icons.circle_outlined,
+                        size: 18,
+                        color: index + 1 <= gate.current
+                            ? color
+                            : const Color(0xff83a891),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          '${index + 1}. ${stages[index]}',
+                          style: TextStyle(
+                            fontWeight: index + 1 == gate.current
+                                ? FontWeight.w900
+                                : FontWeight.w600,
+                            color: index + 1 == gate.current ? color : null,
+                          ),
+                        ),
+                      ),
+                      if (index + 1 == gate.current)
+                        const Text(
+                          'CURRENT',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final progress = model.progress;
@@ -1773,6 +1864,17 @@ class ModelCard extends StatelessWidget {
                 spacing: 7,
                 runSpacing: 7,
                 children: [
+                  OutlinedButton.icon(
+                    key: ValueKey('exact-stage-button-${model.id}'),
+                    onPressed: () => _showExactStage(context, gate),
+                    icon: const Icon(Icons.account_tree_outlined, size: 15),
+                    label: const Text('Exact stage'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: color,
+                      side: BorderSide(color: color),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                   if (completionLabel.isNotEmpty)
                     Container(
                       key: ValueKey('completion-pill-${model.id}'),

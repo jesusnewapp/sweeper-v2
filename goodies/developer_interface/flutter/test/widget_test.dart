@@ -84,6 +84,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('exact stage button lists and highlights the current stage', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'open-library',
+              name: 'Open Library',
+              stage: 'prepare',
+              accepted: 3,
+              target: 2000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'Live status',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 1,
+              since: now,
+            ),
+            stageObservation: StageObservation(stage: 'prepare', since: now),
+            now: now,
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('exact-stage-button-open-library')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('exact-stage-dialog-open-library')),
+      findsOneWidget,
+    );
+    expect(find.text('1. Initialize'), findsOneWidget);
+    expect(find.text('2. Discover / acquire'), findsOneWidget);
+    expect(find.text('CURRENT'), findsOneWidget);
+  });
+
   testWidgets('completed unit keeps a celebratory published state', (
     tester,
   ) async {
