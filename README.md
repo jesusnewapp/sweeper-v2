@@ -320,7 +320,10 @@ production was not mutated, and remote bytes were verified identical. Any
 missing or mismatched field remains ineligible. A publisher supervisor should
 also wait for an already-running serialized writer to finish before restarting
 its listener; this makes continuation automatic without overlapping writers or
-replaying a live unit.
+replaying a live unit. If a dead writer leaves a lease behind, treat its bounded
+cooldown as transient dock ownership and keep polling it; do not record that
+cooldown as a permanent artifact failure. Recover the lease only after its
+configured stale age, then resume the exact queued unit.
 
 The optional bridge switch is default-off and activates only when its nurture
 score reaches the configured threshold (50% by default). It may skip repeated
