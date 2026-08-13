@@ -96,6 +96,26 @@ down its child cleanly.
   and accepted survivors instead of displaying a misleading zero-upload line.
   Recent query movement is computed from newly completed page keys, so lexical
   checkpoint ordering cannot look like a repeated request cycle.
+- Every source card uses the same gate contract while foregrounding the counter
+  that can actually move: discovery shows pages scanned plus candidates and
+  accepted survivors; acquisition shows accepted versus target; staging upload
+  shows uploaded versus its exact receipt target. A prior accepted count is
+  never presented as the active discovery counter.
+- Every bounded loading phase may expose `gateProgressCurrent` and
+  `gateProgressTarget`. The interface renders a separate exact 0–100% meter for
+  that phase. It never manufactures a percentage when an adapter has not
+  supplied a trustworthy denominator.
+- Cards render the major pipeline sequentially. Source lanes advance through
+  initialize → discover/acquire → validate → staging upload → staging
+  verification → complete. Publishers advance through queue/preflight → fresh
+  live duplicate delta → dedup/prepare → storage upload → publish → live
+  verification → complete. Only the active gate's exact work meter is shown;
+  completed and future gates are represented by the pipeline meter. A lane
+  never renders two competing active-work meters.
+- A discovery frontier may carry already accepted survivors forward within the
+  same logical batch. The card labels that count as **survivors carried
+  forward** so it is not mistaken for the discovery-page counter or a new
+  staging upload.
 - The publisher exposes **Verification Mode** or **Uploading Mode**. Its
   dismissible details show the exact gate, receipts, counts, queue state, and
   timestamps while upload counts remain visible on the card.

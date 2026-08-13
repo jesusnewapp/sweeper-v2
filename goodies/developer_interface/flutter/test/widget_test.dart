@@ -167,7 +167,13 @@ void main() {
               name: 'Library of Congress',
               stage: 'discovery',
               mode: 'discovery',
-              modeDetail: {'pagesCompleted': 146, 'candidateRecords': 130},
+              modeDetail: {
+                'pagesCompleted': 146,
+                'candidateRecords': 130,
+                'gateProgressLabel': 'Discovery pages',
+                'gateProgressCurrent': 40,
+                'gateProgressTarget': 160,
+              },
               accepted: 7,
               target: 2000,
               uploaded: 0,
@@ -188,9 +194,26 @@ void main() {
         ),
       ),
     );
+    expect(find.text('146 pages scanned'), findsOneWidget);
+    expect(find.text('Pipeline 2/6 · Discover / acquire'), findsOneWidget);
     expect(
-      find.text('146 pages · 130 candidates · 7 accepted'),
+      find.byKey(const ValueKey('pipeline-meter-library-of-congress')),
       findsOneWidget,
+    );
+    expect(
+      find.text('146 pages · 130 candidates · 7 survivors carried forward'),
+      findsOneWidget,
+    );
+    expect(find.text('7 / 2000'), findsNothing);
+    expect(find.text('Discovery pages · 40 / 160'), findsOneWidget);
+    expect(find.text('25.0%'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('gate-loading-meter-library-of-congress')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('active-work-meter-library-of-congress')),
+      findsNothing,
     );
     expect(find.textContaining('0 uploaded'), findsNothing);
   });

@@ -250,7 +250,15 @@ class SweeperController:
         uploading_mode = progress_active or any(
             marker in stage.casefold() for marker in ("upload", "staging", "verification", "verify")
         )
-        mode = "uploading" if uploading_mode else "discovery"
+        if uploading_mode:
+            mode = "uploading"
+        elif supplemental_observed is not None and discovery_age is not None and discovery_age <= 90:
+            mode = "discovery"
+        else:
+            # Some adapters acquire as they search while others materialize a
+            # bounded discovery inventory first. Keep one lane contract while
+            # naming the actual active gate.
+            mode = "acquisition"
         mode_detail = {
             "mode": mode,
             "stage": stage,
@@ -269,6 +277,15 @@ class SweeperController:
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
+        pages_completed = _count(mode_detail.get("pagesCompleted"))
+        discovery_baseline = _count(state.get("discoveryPagesBaseline"))
+        discovery_target = _count(state.get("discoveryPagesTarget"))
+        if discovery_target > 0:
+            mode_detail.update({
+                "gateProgressLabel": "Discovery pages",
+                "gateProgressCurrent": max(0, pages_completed - discovery_baseline),
+                "gateProgressTarget": discovery_target,
+            })
         if progress_active:
             display_accepted = uploaded
             display_target = int(progress.get("total") or accepted or target)
@@ -419,6 +436,19 @@ class SweeperController:
             "unitUpdatedAt": updated,
             "watcherCheckedAt": state.get("checkedAt", ""),
         }
+        if current and target > 0:
+            gate_label = {
+                "storage-upload": "Storage upload",
+                "publication-complete": "Publishing",
+                "live-verification": "Live verification",
+                "complete": "Live verification",
+            }.get(stage)
+            if gate_label:
+                mode_detail.update({
+                    "gateProgressLabel": gate_label,
+                    "gateProgressCurrent": phase_count,
+                    "gateProgressTarget": target,
+                })
         return {
             "id": definition.get("id", "publisher"),
             "name": definition.get("name", "Stage-to-live publisher"),

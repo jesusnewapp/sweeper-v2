@@ -1145,6 +1145,28 @@ class GatePosition {
   final int total;
 }
 
+String pipelineStageLabel(ModelView model, GatePosition gate) {
+  final sourceStages = [
+    'Initialize',
+    'Discover / acquire',
+    'Validate',
+    'Staging upload',
+    'Staging verification',
+    'Complete',
+  ];
+  final publisherStages = [
+    'Queue / preflight',
+    'Live duplicate delta',
+    'Dedup / prepare',
+    'Storage upload',
+    'Publish',
+    'Live verification',
+    'Complete',
+  ];
+  final stages = model.id == 'publisher' ? publisherStages : sourceStages;
+  return stages[(gate.current - 1).clamp(0, stages.length - 1)];
+}
+
 GatePosition gatePositionFor(ModelView model) {
   final stage = model.stage.toLowerCase().replaceAll('_', '-');
   if (model.id == 'publisher') {
@@ -1233,6 +1255,7 @@ class ModelCard extends StatelessWidget {
 
   String get modeLabel {
     if (model.mode.toLowerCase() == 'uploading') return 'Uploading';
+    if (model.mode.toLowerCase() == 'acquisition') return 'Acquisition';
     if (model.id == 'publisher') return 'Verification';
     return 'Discovery';
   }
@@ -1274,6 +1297,9 @@ class ModelCard extends StatelessWidget {
     'activePage' => 'Current page',
     'lastCompletedQuery' => 'Last completed query',
     'lastCompletedPage' => 'Last completed page',
+    'gateProgressLabel' => 'Loading meter',
+    'gateProgressCurrent' => 'Loading current',
+    'gateProgressTarget' => 'Loading target',
     'discoveryFrontier' => 'Discovery frontier',
     'candidateOffset' => 'Candidate offset',
     'prepared' => 'Prepared',
@@ -1391,6 +1417,7 @@ class ModelCard extends StatelessWidget {
         ? Duration.zero
         : now.difference(stageObservation!.since);
     final gate = gatePositionFor(model);
+    final pipelineLabel = pipelineStageLabel(model, gate);
     final gateSeconds = max(0, stageHeldFor.inSeconds);
     final pushReady = heldFor.inSeconds >= 300;
     final modeColor = _modeColor(heldFor);
@@ -1400,9 +1427,21 @@ class ModelCard extends StatelessWidget {
         ?.toInt();
     final discoverySummary = model.mode == 'discovery' && pagesCompleted != null
         ? '$pagesCompleted pages · ${candidateRecords ?? 0} candidates · '
-              '${model.accepted} accepted'
+              '${model.accepted} survivors carried forward'
         : null;
     final completionState = '${model.modeDetail['completionState'] ?? ''}';
+    final gateProgressLabel =
+        '${model.modeDetail['gateProgressLabel'] ?? 'Gate loading'}';
+    final gateProgressCurrent =
+        (model.modeDetail['gateProgressCurrent'] as num?)?.toInt();
+    final gateProgressTarget = (model.modeDetail['gateProgressTarget'] as num?)
+        ?.toInt();
+    final gateProgress =
+        gateProgressCurrent != null &&
+            gateProgressTarget != null &&
+            gateProgressTarget > 0
+        ? (gateProgressCurrent / gateProgressTarget).clamp(0.0, 1.0)
+        : null;
     final completionLabel = switch (completionState) {
       'published' => 'Published',
       'staged' => 'Staged',
@@ -1594,18 +1633,91 @@ class ModelCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            Text(
-              '${model.accepted.toString()} / ${model.target.toString()}',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Pipeline ${gate.current}/${gate.total} · $pipelineLabel',
+                    key: ValueKey('pipeline-label-${model.id}'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xff83a891),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${(gate.current / gate.total * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 5),
             LinearProgressIndicator(
-              value: progress,
-              minHeight: 7,
+              key: ValueKey('pipeline-meter-${model.id}'),
+              value: gate.current / gate.total,
+              minHeight: 5,
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xff173426),
               color: color,
             ),
+            const SizedBox(height: 14),
+            Text(
+              model.mode == 'discovery' && pagesCompleted != null
+                  ? '$pagesCompleted pages scanned'
+                  : '${model.accepted.toString()} / ${model.target.toString()}',
+              key: ValueKey('primary-counter-${model.id}'),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            if (model.mode != 'discovery' && gateProgress == null) ...[
+              const SizedBox(height: 7),
+              LinearProgressIndicator(
+                key: ValueKey('active-work-meter-${model.id}'),
+                value: progress,
+                minHeight: 7,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xff173426),
+                color: color,
+              ),
+            ],
+            if (gateProgress != null) ...[
+              const SizedBox(height: 11),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$gateProgressLabel · $gateProgressCurrent / $gateProgressTarget',
+                      key: ValueKey('gate-loading-label-${model.id}'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xff83a891),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${(gateProgress * 100).toStringAsFixed(1)}%',
+                    key: ValueKey('gate-loading-percent-${model.id}'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              LinearProgressIndicator(
+                key: ValueKey('gate-loading-meter-${model.id}'),
+                value: gateProgress,
+                minHeight: 5,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xff173426),
+                color: const Color(0xff4cc9f0),
+              ),
+            ],
             const SizedBox(height: 9),
             Text(
               discoverySummary ??

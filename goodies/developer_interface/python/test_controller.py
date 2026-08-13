@@ -43,6 +43,8 @@ class ControllerTests(unittest.TestCase):
             (root / "state.json").write_text(json.dumps({
                 "status": "running", "stage": "discovery",
                 "acceptedInCurrentBatch": 6, "currentBatchSize": 2000,
+                "discoveryPagesBaseline": 100,
+                "discoveryPagesTarget": 200,
             }), encoding="utf-8")
             progress = root / "discovery.partial.json"
             progress.write_text(json.dumps({
@@ -64,6 +66,9 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(2, first_lane["modeDetail"]["pagesCompleted"])
             self.assertEqual(3, first_lane["modeDetail"]["candidateRecords"])
             self.assertEqual(2, first_lane["modeDetail"]["newlyCompletedPages"])
+            self.assertEqual("Discovery pages", first_lane["modeDetail"]["gateProgressLabel"])
+            self.assertEqual(0, first_lane["modeDetail"]["gateProgressCurrent"])
+            self.assertEqual(200, first_lane["modeDetail"]["gateProgressTarget"])
             progress.write_text(json.dumps({
                 "completed": ["page-149", "page-150", "page-151"],
                 "records": [{"id": str(index)} for index in range(5)],
@@ -100,6 +105,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(status["codexLive"], 42)
             self.assertEqual(status["lanes"][0]["accepted"], 321)
             self.assertEqual(status["lanes"][0]["health"], "healthy")
+            self.assertEqual(status["lanes"][0]["mode"], "acquisition")
             self.assertIn("progressSince", status["lanes"][0])
             self.assertEqual(status["productionWriterLimit"], 1)
 
@@ -223,6 +229,9 @@ class ControllerTests(unittest.TestCase):
             self.assertIn("1 queued behind current", lane["detail"])
             self.assertEqual(lane["mode"], "uploading")
             self.assertEqual(lane["modeDetail"]["prepared"], 870)
+            self.assertEqual("Storage upload", lane["modeDetail"]["gateProgressLabel"])
+            self.assertEqual(675, lane["modeDetail"]["gateProgressCurrent"])
+            self.assertEqual(853, lane["modeDetail"]["gateProgressTarget"])
 
     def test_publisher_distinguishes_ready_from_parked_queue_units(self):
         with tempfile.TemporaryDirectory() as temporary:
