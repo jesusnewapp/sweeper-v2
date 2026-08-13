@@ -154,6 +154,70 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual("healthy", lane["health"])
             self.assertIsNotNone(lane["acceptedGrowthSince"])
 
+    def test_acquisition_health_uses_cumulative_acceptance_across_rollover(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            imports = root / "work/judah_library/imports"
+            imports.mkdir(parents=True)
+            first = imports / "lane_batch_0001"
+            first.mkdir()
+            (first / "catalog.json").write_text(json.dumps({"books": [{"id": "one"}]}))
+            (first / "staging_upload_receipt.json").write_text(json.dumps({
+                "staged": 1, "productionMutated": False,
+            }))
+            second = imports / "lane_batch_0002"
+            second.mkdir()
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "prepare", "currentRoot": str(second),
+                "currentBatchSize": 2000,
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json",
+                           "historyPrefix": "lane_batch_"}],
+            }))
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual(0, lane["accepted"])
+            self.assertEqual(1, lane["acceptedCumulative"])
+
+    def test_recent_acceptance_journal_survives_controller_restart_as_health(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_001"
+            unit.mkdir()
+            (unit / "progress.jsonl").write_text(
+                json.dumps({"kind": "accepted", "id": "one"}) + "\n")
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "prepare", "currentRoot": str(unit),
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }))
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual("healthy", lane["health"])
+            self.assertIsNotNone(lane["acceptedGrowthSince"])
+
+    def test_in_progress_writer_cannot_regress_permanent_live_total(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            imports = root / "work/judah_library/imports/unit_001"
+            imports.mkdir(parents=True)
+            (imports / "promotion_validation.json").write_text(json.dumps({
+                "status": "published-and-five-gate-verified",
+                "publishedLiveTotal": 39673,
+                "liveVerified": 81,
+            }))
+            metrics = root / "metrics.json"
+            metrics.write_text(json.dumps({"codexLive": 39320}))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root), "metricsPath": "metrics.json", "lanes": [],
+            }))
+            self.assertEqual(39673, SweeperController(config_path).status()["codexLive"])
+
     def test_uploading_source_lane_is_not_healthy_without_accepted_growth(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -208,6 +272,9 @@ class ControllerTests(unittest.TestCase):
             with (unit / "progress.jsonl").open("a", encoding="utf-8") as journal:
                 journal.write(json.dumps({"kind": "accepted", "id": "four"}) + "\n")
             self.assertEqual(3, controller.status()["lanes"][0]["accepted"])
+            with (unit / "progress.jsonl").open("a", encoding="utf-8") as journal:
+                journal.write(json.dumps({"kind": "rejected", "id": "three"}) + "\n")
+            self.assertEqual(2, controller.status()["lanes"][0]["accepted"])
 
     def test_unconfigured_actions_are_disabled(self):
         with tempfile.TemporaryDirectory() as temporary:

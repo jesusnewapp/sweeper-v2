@@ -241,7 +241,7 @@ class SweeperController:
         return dict(value)
 
     def _accepted_journal_count(self, path: Path) -> tuple[int, Optional[datetime]]:
-        """Incrementally count durable accepted decisions in an append-only journal."""
+        """Count current durable acceptances, honoring append-only revocations."""
         key = str(path)
         try:
             metadata = path.stat()
@@ -250,10 +250,10 @@ class SweeperController:
         cached = self._decision_journal_samples.get(key, {})
         same_file = cached.get("inode") == metadata.st_ino
         offset = int(cached.get("offset", 0)) if same_file else 0
-        accepted = int(cached.get("accepted", 0)) if same_file else 0
+        accepted_ids = set(cached.get("acceptedIds", ())) if same_file else set()
         if metadata.st_size < offset:
             offset = 0
-            accepted = 0
+            accepted_ids = set()
         try:
             with path.open("rb") as journal:
                 journal.seek(offset)
@@ -262,19 +262,26 @@ class SweeperController:
                         break
                     offset += len(raw)
                     try:
-                        if json.loads(raw).get("kind") == "accepted":
-                            accepted += 1
+                        event = json.loads(raw)
+                        identity = str(
+                            event.get("id") or event.get("archiveId") or
+                            (event.get("identifiers") or {}).get("archive") or ""
+                        ).strip()
+                        if event.get("kind") == "accepted" and identity:
+                            accepted_ids.add(identity)
+                        elif event.get("kind") == "rejected" and identity:
+                            accepted_ids.discard(identity)
                     except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
                         continue
         except OSError:
-            return accepted, None
+            return len(accepted_ids), None
         self._decision_journal_samples[key] = {
             "inode": metadata.st_ino,
             "offset": offset,
-            "accepted": accepted,
+            "acceptedIds": sorted(accepted_ids),
         }
         observed = datetime.fromtimestamp(metadata.st_mtime, timezone.utc)
-        return accepted, observed
+        return len(accepted_ids), observed
 
     def _lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         if definition.get("kind") == "publisher":
@@ -435,11 +442,26 @@ class SweeperController:
             display_accepted = accepted
             display_target = target
             detail = f"{accepted}/{target} accepted · staging"
+        historical_accepted = sum(max(
+            _count(item.get("staged")),
+            _count(item.get("published")),
+            _count(item.get("liveVerified")),
+        ) for item in success_history)
+        accepted_cumulative = historical_accepted + accepted
+        accepted_evidence = [journal_observed]
+        accepted_evidence.extend(_timestamp(item.get("completedAt")) for item in success_history)
+        accepted_evidence = [value for value in accepted_evidence if value is not None]
+        accepted_updated_at = (
+            max(accepted_evidence).isoformat().replace("+00:00", "Z")
+            if accepted_evidence else None
+        )
         return {
             "id": lane_id,
             "name": definition.get("name", "Unnamed lane"),
             "stage": stage,
             "accepted": display_accepted,
+            "acceptedCumulative": accepted_cumulative,
+            "acceptedUpdatedAt": accepted_updated_at,
             "target": display_target,
             "uploaded": uploaded,
             "health": health,
@@ -698,6 +720,18 @@ class SweeperController:
             return {}
         return _read_json(self._path(str(value)))
 
+    def _receipt_live_total(self) -> int:
+        """Return the monotonic total proven by permanent promotion receipts."""
+        imports = self.project_root / "work/judah_library/imports"
+        total = 0
+        for path in imports.glob("*/promotion_validation.json"):
+            receipt = _read_json(path)
+            if receipt.get("status") in {
+                    "published-and-five-gate-verified",
+                    "already-live-and-five-gate-accounted"}:
+                total = max(total, _count(receipt.get("publishedLiveTotal")))
+        return total
+
     def status(self) -> Dict[str, Any]:
         lanes = [self._lane(item) for item in self.config.get("lanes", []) if isinstance(item, dict)]
         checked_at = datetime.now(timezone.utc)
@@ -733,10 +767,15 @@ class SweeperController:
             # while it is handing survivors to staging. Upload activity is an
             # adjustment toward health; it is not acquisition health itself.
             if lane_id != "publisher":
-                accepted = _count(lane.get("accepted"))
+                # Current-unit counters reset at every successful handoff. Lane
+                # health must observe the monotonic authoritative acceptance
+                # total or that rollover falsely looks like a regression to 0.
+                accepted = _count(lane.get("acceptedCumulative", lane.get("accepted")))
                 growth = self._accepted_growth_observations.get(lane_id)
                 if growth is None or accepted < _count(growth.get("accepted")):
-                    growth = {"accepted": accepted, "lastGrowth": None}
+                    growth = {"accepted": accepted, "lastGrowth": (
+                        _timestamp(lane.get("acceptedUpdatedAt")) if accepted > 0 else None
+                    )}
                 elif accepted > _count(growth.get("accepted")):
                     growth = {"accepted": accepted, "lastGrowth": checked_at}
                 self._accepted_growth_observations[lane_id] = growth
@@ -757,7 +796,7 @@ class SweeperController:
                         )
         codex_live = _count(metrics.get("codexLive", self.config.get("codexLive", 0)))
         publisher_live = max((_count(lane.get("codexLive")) for lane in lanes), default=0)
-        codex_live = max(codex_live, publisher_live)
+        codex_live = max(codex_live, publisher_live, self._receipt_live_total())
         return {
             "schemaVersion": 1,
             "checkedAt": checked_at.isoformat().replace("+00:00", "Z"),
