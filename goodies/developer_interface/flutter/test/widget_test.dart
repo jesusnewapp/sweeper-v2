@@ -98,6 +98,13 @@ void main() {
     );
     expect(find.text('Gate 2/6 · 37s'), findsOneWidget);
     expect(find.byIcon(Icons.radar_rounded), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('active-pill-library-of-congress')),
+      findsOneWidget,
+    );
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('prepare'), findsNothing);
+    expect(find.text('Discovery · 37s'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -144,7 +151,7 @@ void main() {
       find.byKey(const ValueKey('mode-pill-library-of-congress')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Discovery Mode'), findsOneWidget);
+    expect(find.text('Discovery details'), findsOneWidget);
     expect(find.text('Pages completed'), findsOneWidget);
     expect(find.text('152'), findsOneWidget);
     expect(find.text('Candidate records'), findsOneWidget);
@@ -201,7 +208,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('mode-pill-publisher')));
     await tester.pumpAndSettle();
-    expect(find.text('Verification Mode'), findsOneWidget);
+    expect(find.text('Verification details'), findsOneWidget);
     expect(find.text('Live verified'), findsOneWidget);
     expect(find.text('812'), findsAtLeastNWidgets(1));
     expect(find.text('Promotion receipt'), findsOneWidget);
@@ -244,6 +251,7 @@ void main() {
     expect(pushes, 1);
     expect(find.text('Push'), findsOneWidget);
     expect(find.text('Gate 7/7 · 300s'), findsOneWidget);
+    expect(find.text('Verification · stuck 5m 00s'), findsOneWidget);
   });
 
   testWidgets('four model slots expose name and connector fields', (

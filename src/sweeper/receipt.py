@@ -19,6 +19,13 @@ def _atomic_json(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def _acceptance_count(report: dict) -> int:
+    """Normalize exact survivor counts while rejecting ambiguous reports."""
+    values = [int(report[key]) for key in ("accepted", "prepared")
+              if key in report]
+    return values[0] if values and len(set(values)) == 1 else -1
+
+
 def canonical_acceptance_receipt(workspace: Path, source: str,
                                  expected_count: int) -> dict:
     """Normalize a source adapter's exact acceptance evidence.
@@ -35,7 +42,7 @@ def canonical_acceptance_receipt(workspace: Path, source: str,
         path = import_path
         report = json.loads(path.read_text(encoding="utf-8"))
         if (str(report.get("source", "")) != source or
-                int(report.get("accepted", -1)) != expected_count):
+                _acceptance_count(report) != expected_count):
             raise ValueError("import report does not bind the exact accepted source unit")
         kind = "import-report"
     elif validation_path.exists():

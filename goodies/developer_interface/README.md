@@ -83,6 +83,12 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
 - The publisher exposes **Verification Mode** or **Uploading Mode**. Its
   dismissible details show the exact gate, receipts, counts, queue state, and
   timestamps while upload counts remain visible on the card.
+- Raw adapter stage names such as `prepare` are kept inside the detail view.
+  The card instead shows a glowing **Active** status and a pressable Discovery,
+  Verification, or Uploading control. Discovery and verification controls show
+  the exact unchanged-evidence age and scale yellow to orange to red at five
+  minutes; any durable counter, journal, receipt, or timestamp movement resets
+  that clock.
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.

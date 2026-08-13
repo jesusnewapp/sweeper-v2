@@ -7,6 +7,25 @@ from sweeper.receipt import RestartableStagingReceipt, canonical_acceptance_rece
 
 
 class RestartableReceiptTests(unittest.TestCase):
+    def test_importer_prepared_survivor_count_is_an_exact_acceptance_alias(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "import_report.json").write_text(json.dumps({
+                "source": "Open Library", "prepared": 1442,
+            }), encoding="utf-8")
+            evidence = canonical_acceptance_receipt(root, "Open Library", 1442)
+            self.assertEqual(1442, evidence["accepted"])
+            self.assertEqual("import-report", evidence["receiptKind"])
+
+    def test_conflicting_importer_count_aliases_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "import_report.json").write_text(json.dumps({
+                "source": "Open Library", "accepted": 1442, "prepared": 1441,
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact accepted source unit"):
+                canonical_acceptance_receipt(root, "Open Library", 1442)
+
     def test_validator_first_adapter_is_not_blocked_by_report_filename(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

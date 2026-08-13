@@ -1230,9 +1230,33 @@ class ModelCard extends StatelessWidget {
   };
 
   String get modeLabel {
-    if (model.mode.toLowerCase() == 'uploading') return 'Uploading Mode';
-    if (model.id == 'publisher') return 'Verification Mode';
-    return 'Discovery Mode';
+    if (model.mode.toLowerCase() == 'uploading') return 'Uploading';
+    if (model.id == 'publisher') return 'Verification';
+    return 'Discovery';
+  }
+
+  Color _modeColor(Duration unchangedFor) {
+    if (model.mode.toLowerCase() == 'uploading') {
+      return const Color(0xff35d07f);
+    }
+    if (model.health == Health.failed || unchangedFor.inSeconds >= 300) {
+      return const Color(0xffff4e5b);
+    }
+    const yellow = Color(0xfff5d142);
+    const orange = Color(0xffff8a3d);
+    const red = Color(0xffff4e5b);
+    final seconds = unchangedFor.inSeconds.clamp(0, 300);
+    if (seconds <= 150) {
+      return Color.lerp(yellow, orange, seconds / 150) ?? yellow;
+    }
+    return Color.lerp(orange, red, (seconds - 150) / 150) ?? orange;
+  }
+
+  String _modeButtonLabel(Duration unchangedFor) {
+    if (model.mode.toLowerCase() == 'uploading') return 'Uploading';
+    final age = formatDuration(unchangedFor);
+    if (unchangedFor.inSeconds >= 300) return '$modeLabel · stuck $age';
+    return '$modeLabel · $age';
   }
 
   String _detailLabel(String key) => switch (key) {
@@ -1266,13 +1290,21 @@ class ModelCard extends StatelessWidget {
     'watcherCheckedAt' => 'Watcher checked',
     'journalBytes' => 'Journal bytes',
     'currentRoot' => 'Current root',
+    'signalState' => 'Progress signal',
+    'unchangedFor' => 'Unchanged for',
     _ => key,
   };
 
-  void _showModeDetails(BuildContext context) {
-    final entries = model.modeDetail.entries
-        .where((entry) => entry.key != 'mode')
-        .toList();
+  void _showModeDetails(BuildContext context, Duration unchangedFor) {
+    final entries = <MapEntry<String, dynamic>>[
+      MapEntry(
+        'signalState',
+        unchangedFor.inSeconds >= 300 ? 'Stuck' : 'Moving / observed',
+      ),
+      MapEntry('unchangedFor', formatDuration(unchangedFor)),
+      ...model.modeDetail.entries.where((entry) => entry.key != 'mode'),
+    ];
+    final modeColor = _modeColor(unchangedFor);
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1286,10 +1318,10 @@ class ModelCard extends StatelessWidget {
                   : model.id == 'publisher'
                   ? Icons.verified_outlined
                   : Icons.travel_explore_rounded,
-              color: color,
+              color: modeColor,
             ),
             const SizedBox(width: 9),
-            Expanded(child: Text(modeLabel)),
+            Expanded(child: Text('$modeLabel details')),
             IconButton(
               key: ValueKey('close-mode-${model.id}'),
               tooltip: 'Close details',
@@ -1353,6 +1385,7 @@ class ModelCard extends StatelessWidget {
     final gate = gatePositionFor(model);
     final gateSeconds = max(0, stageHeldFor.inSeconds);
     final pushReady = heldFor.inSeconds >= 300;
+    final modeColor = _modeColor(heldFor);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -1413,35 +1446,79 @@ class ModelCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 5),
-            Text(
-              model.stage,
-              textAlign: TextAlign.end,
-              softWrap: true,
-              style: TextStyle(
-                fontSize: 11,
-                color: color,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
             const SizedBox(height: 7),
             Align(
               alignment: Alignment.centerRight,
-              child: ActionChip(
-                key: ValueKey('mode-pill-${model.id}'),
-                avatar: Icon(
-                  model.mode == 'uploading'
-                      ? Icons.cloud_upload_outlined
-                      : model.id == 'publisher'
-                      ? Icons.verified_outlined
-                      : Icons.travel_explore_rounded,
-                  size: 15,
-                  color: color,
-                ),
-                label: Text('$modeLabel · details'),
-                onPressed: () => _showModeDetails(context),
-                side: BorderSide(color: color.withValues(alpha: 0.65)),
-                backgroundColor: color.withValues(alpha: 0.08),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  AnimatedContainer(
+                    key: ValueKey('active-pill-${model.id}'),
+                    duration: const Duration(milliseconds: 350),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff35d07f).withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xff35d07f)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xff35d07f,
+                          ).withValues(alpha: 0.38),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.bolt_rounded,
+                          size: 15,
+                          color: Color(0xff64dc98),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'Active',
+                          style: TextStyle(
+                            color: Color(0xff64dc98),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    key: ValueKey('mode-pill-${model.id}'),
+                    onPressed: () => _showModeDetails(context, heldFor),
+                    icon: Icon(
+                      model.mode == 'uploading'
+                          ? Icons.cloud_upload_outlined
+                          : model.id == 'publisher'
+                          ? Icons.verified_outlined
+                          : Icons.travel_explore_rounded,
+                      size: 15,
+                    ),
+                    label: Text(_modeButtonLabel(heldFor)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: modeColor,
+                      side: BorderSide(color: modeColor),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 14),
