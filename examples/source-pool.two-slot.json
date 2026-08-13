@@ -1,35 +1,33 @@
 {
   "schema_version": 1,
-  "profile": "two-source-continuous",
+  "profile": "two-instance-model-one-continuous",
   "source_slot_count": 2,
   "automatic_cross_source_transition": false,
   "source_slots": [
     {
       "slot": 1,
-      "id": "open-library-broad-christian",
+      "id": "open-library-model-one-primary",
       "mode": "continuous-same-source-restart",
       "acquisition_target": 2000,
       "workers": 2,
       "minimum_free_gib": 1,
       "launch_command": ["REPLACE_WITH_OPEN_LIBRARY_DIRECT_DOWNLOAD_ADAPTER"],
       "query_profile": "broad-christian",
+      "continuation_namespace": "model-one-primary",
+      "shared_duplicate_evidence": true,
       "allow_partial_on_exhaustion": true
     },
     {
       "slot": 2,
-      "id": "open-library-christian-stories",
+      "id": "open-library-model-one-parallel",
       "mode": "continuous-same-source-restart",
       "acquisition_target": 2000,
       "workers": 2,
       "minimum_free_gib": 1,
       "launch_command": ["REPLACE_WITH_OPEN_LIBRARY_DIRECT_DOWNLOAD_ADAPTER"],
-      "query_profile": "christian-stories",
-      "navigation_queries": [
-        "Christian stories", "Christian biography", "Bible stories",
-        "Christian allegory", "Missionary stories", "Saints and church heroes",
-        "Bible history narratives", "Christian testimony",
-        "Church history stories", "Devotional narratives"
-      ],
+      "query_profile": "broad-christian",
+      "continuation_namespace": "model-one-parallel",
+      "shared_duplicate_evidence": true,
       "allow_partial_on_exhaustion": true
     }
   ],
@@ -38,6 +36,12 @@
     "confirm_prior_child_dead": true,
     "prevent_overlap": true,
     "preserve_checkpoints_and_receipts": true
+  },
+  "parallel_deduplication": {
+    "lane_checkpoints_are_isolated": true,
+    "accepted_staged_live_identities_are_shared": true,
+    "same_offset_requires_atomic_candidate_claims": true,
+    "default_without_claim_ledger": "distinct-deterministic-discovery-partitions"
   },
   "publication_policy": {
     "separate_from_acquisition": true,

@@ -18,7 +18,7 @@ void main() {
   test('live-index refresh stays in the active discovery gate', () {
     final model = ModelView.fromJson({
       'id': 'open-library-stories',
-      'name': 'Open Library 2',
+      'name': 'Open Library · Model 1 Parallel',
       'stage': 'fresh-live-export',
       'accepted': 0,
       'target': 2000,

@@ -152,10 +152,13 @@ class SweeperController:
         path = Path(value).expanduser()
         return path if path.is_absolute() else self.project_root / path
 
-    def _source_success_history(self, lane_id: str) -> List[Dict[str, Any]]:
-        prefix = {
+    def _source_success_history(
+        self, lane_id: str, definition: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        configured_prefix = str((definition or {}).get("historyPrefix", "")).strip()
+        prefix = configured_prefix or {
             "open-library": "open_library_",
-            "open-library-stories": "open_library_christian_stories_",
+            "open-library-stories": "open_library_parallel_model_1_",
             "library-of-congress": "library_of_congress_",
         }.get(lane_id)
         if not prefix:
@@ -163,19 +166,36 @@ class SweeperController:
         imports = self.project_root / "work/judah_library/imports"
         rows: List[Dict[str, Any]] = []
         for root in imports.glob(f"{prefix}*"):
+            if lane_id == "open-library" and root.name.startswith(
+                ("open_library_christian_stories_", "open_library_parallel_model_1_")
+            ):
+                continue
             verification = _read_json(root / "staging_verification.json")
+            upload_receipt = _read_json(root / "staging_upload_receipt.json")
             verified = _count(verification.get("verified"))
-            if verified < 1 or verification.get("productionMutated") is not False:
+            receipt_staged = _count(upload_receipt.get("staged"))
+            staged = verified if verified > 0 else receipt_staged
+            isolated = (
+                verification.get("productionMutated") is False
+                if verified > 0
+                else upload_receipt.get("productionMutated") is False
+            )
+            if staged < 1 or not isolated:
                 continue
             promotion = _read_json(root / "promotion_validation.json")
             rows.append({
                 "batchNumber": _batch_number(root.name),
                 "root": str(root),
                 "status": "live-verified" if _count(promotion.get("liveVerified")) > 0 else "staged",
-                "staged": verified,
+                "staged": staged,
                 "published": _count(promotion.get("published")),
                 "liveVerified": _count(promotion.get("liveVerified")),
-                "completedAt": promotion.get("completedAt") or verification.get("verifiedAt") or "",
+                "completedAt": (
+                    promotion.get("completedAt")
+                    or verification.get("verifiedAt")
+                    or upload_receipt.get("stagedAt")
+                    or ""
+                ),
             })
         rows.sort(key=lambda row: (str(row["completedAt"]), int(row["batchNumber"])), reverse=True)
         return rows[:8]
@@ -226,11 +246,12 @@ class SweeperController:
         current_root = _first(state, ("currentRoot", "root"), "")
         lane_id = str(definition.get("id", definition.get("name", "lane")))
         batch_number = _count(state.get("currentBatch")) or _batch_number(current_root)
-        success_history = self._source_success_history(lane_id)
+        success_history = self._source_success_history(lane_id, definition)
         navigation = _read_json(
             self._path(str(definition.get("navigationPath", "missing-navigation.json")))
         )
-        checkpoint = _read_json(Path(current_root) / "checkpoint.json") if current_root else {}
+        checkpoint_path = Path(current_root) / "checkpoint.json" if current_root else None
+        checkpoint = _read_json(checkpoint_path) if checkpoint_path else {}
         progress = _read_json(Path(current_root) / "staging_upload_progress.json") if current_root else {}
         accepted = _count(
             _first(
@@ -245,6 +266,10 @@ class SweeperController:
         )
         if isinstance(state.get("membershipReconciliation"), dict) and not accepted:
             accepted = _count(state["membershipReconciliation"].get("catalogMembers"))
+        if current_root and checkpoint_path is not None and not checkpoint_path.exists():
+            # A newly advanced batch has no accepted membership yet. Never
+            # carry the completed prior batch's reconciliation count into it.
+            accepted = 0
         target = int(_first(state, ("currentBatchSize", "batchSize", "target"), definition.get("target", 0)) or 0)
         uploaded = int(_first(progress, ("uploaded", "uploadedCount", "verified"), 0) or 0)
         progress_phase = str(progress.get("phase", ""))

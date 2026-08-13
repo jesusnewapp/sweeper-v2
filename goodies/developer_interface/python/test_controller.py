@@ -215,6 +215,49 @@ class ControllerTests(unittest.TestCase):
             lane = SweeperController(config_path).status()["lanes"][0]
             self.assertEqual("staged", lane["modeDetail"]["completionState"])
 
+    def test_new_batch_does_not_inherit_prior_membership_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "batch_0014"
+            unit.mkdir()
+            (root / "state.json").write_text(json.dumps({
+                "status": "running",
+                "stage": "fresh-live-export",
+                "currentBatch": 14,
+                "currentRoot": str(unit),
+                "currentBatchSize": 2000,
+                "membershipReconciliation": {"catalogMembers": 894},
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json", "target": 2000}],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual((lane["accepted"], lane["target"]), (0, 2000))
+
+    def test_exact_upload_receipt_appears_in_source_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "work/judah_library/imports/open_library_christian_2000_staging_batch_0013"
+            unit.mkdir(parents=True)
+            (unit / "staging_upload_receipt.json").write_text(json.dumps({
+                "staged": 894,
+                "stagedAt": "2026-08-13T10:26:10Z",
+                "productionMutated": False,
+            }), encoding="utf-8")
+            state = root / "state.json"
+            state.write_text(json.dumps({"status": "running"}), encoding="utf-8")
+            config = root / "config.json"
+            config.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "open-library", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            history = SweeperController(config).status()["lanes"][0]["successHistory"]
+            self.assertEqual(history[0]["batchNumber"], 13)
+            self.assertEqual(history[0]["staged"], 894)
+
     def test_publisher_uses_exact_phase_counter_not_prepared_total(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -310,10 +310,14 @@ including the positive final remainder, and live-verifies each before advancing.
 
 For a deliberately simpler deployment with no cross-source transition, use
 [`examples/source-pool.two-slot.json`](examples/source-pool.two-slot.json). It
-keeps exactly two isolated continuous Open Library lanes with different query
-profiles—broad Christian works and a ten-query Christian-stories pool—and
-restarts each lane only after its exact staging receipt. The larger
-ten-slot model remains an optional reference for later source-pool testing.
+runs the same proven broad-Christian Open Library model in both slots. Each
+instance has isolated continuation/checkpoint memory while accepted, staged,
+and live identities remain shared duplicate evidence. A deployment may assign
+distinct deterministic discovery partitions for throughput, or connect both
+instances to one atomic candidate-claim ledger before allowing the same
+discovery offset. Each lane restarts only after its exact staging receipt. The
+larger ten-slot model remains an optional reference for later source-pool
+testing.
 
 ## Optional Tertiary Mode
 

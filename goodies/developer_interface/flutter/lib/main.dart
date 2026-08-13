@@ -129,7 +129,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     }
     if (index == 1) {
       return ModelSlotDraft(
-        name: 'Open Library 2',
+        name: 'Open Library · Model 1 Parallel',
         connector: 'https://openlibrary.org/developers/api',
       );
     }
@@ -176,7 +176,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) _tickObservations();
     });
-    _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _statusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       // Cold-start failures must heal too. Requiring prior live data here
       // trapped the interface in preview mode after a brief controller outage.
       if (!_connecting) _connect(quiet: true);
@@ -267,11 +267,12 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     await _connect(quiet: true);
   }
 
-  Future<void> _connect({
+  Future<bool> _connect({
     bool quiet = false,
     bool resetUiObservations = false,
+    bool forceNetwork = false,
   }) async {
-    if (_connecting) return;
+    if (_connecting) return false;
     setState(() {
       _connecting = true;
       if (!quiet) _connectionMessage = 'Connecting…';
@@ -280,10 +281,18 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       final base = _endpoint.endsWith('/')
           ? _endpoint.substring(0, _endpoint.length - 1)
           : _endpoint;
+      final statusUri = Uri.parse('$base/api/status').replace(
+        queryParameters: forceNetwork
+            ? {'refresh': DateTime.now().microsecondsSinceEpoch.toString()}
+            : null,
+      );
       final response = await http
           .get(
-            Uri.parse('$base/api/status'),
-            headers: _token.isEmpty ? {} : {'Authorization': 'Bearer $_token'},
+            statusUri,
+            headers: {
+              if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+              if (forceNetwork) 'Cache-Control': 'no-cache, no-store',
+            },
           )
           .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
@@ -302,7 +311,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                 )
                 .toList()
           : null;
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _codexLive = (payload['codexLive'] as num?)?.toInt() ?? _codexLive;
         _confirmedStaged =
@@ -319,12 +328,24 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         }
         _connectionMessage = 'Connected · live controller data';
       });
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _connectionMessage = 'Connection failed · $error');
+      return false;
     } finally {
       if (mounted) setState(() => _connecting = false);
     }
+  }
+
+  Future<void> _manualRefresh() async {
+    final refreshed = await _connect(
+      resetUiObservations: true,
+      forceNetwork: true,
+    );
+    if (!mounted) return;
+    final time = TimeOfDay.now().format(context);
+    _notice(refreshed ? 'UI refreshed · $time' : 'UI refresh failed · $time');
   }
 
   Future<void> _sendAction(String action, {String? laneId}) async {
@@ -493,9 +514,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         actions: [
           TextButton.icon(
             key: const ValueKey('refresh-ui-button'),
-            onPressed: _connecting
-                ? null
-                : () => _connect(resetUiObservations: true),
+            onPressed: _connecting ? null : _manualRefresh,
             icon: _connecting
                 ? const SizedBox.square(
                     dimension: 16,
