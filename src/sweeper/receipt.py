@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,46 @@ def _atomic_json(path: Path, value: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def canonical_acceptance_receipt(workspace: Path, source: str,
+                                 expected_count: int) -> dict:
+    """Normalize a source adapter's exact acceptance evidence.
+
+    Importers may emit ``import_report.json`` while validator-first adapters
+    emit ``validation_report.json``. The boundary accepts either known shape,
+    validates its exact source/count result, and binds the selected file hash.
+    """
+    if not source.strip() or expected_count < 1:
+        raise ValueError("source and a positive expected count are required")
+    import_path = workspace / "import_report.json"
+    validation_path = workspace / "validation_report.json"
+    if import_path.exists():
+        path = import_path
+        report = json.loads(path.read_text(encoding="utf-8"))
+        if (str(report.get("source", "")) != source or
+                int(report.get("accepted", -1)) != expected_count):
+            raise ValueError("import report does not bind the exact accepted source unit")
+        kind = "import-report"
+    elif validation_path.exists():
+        path = validation_path
+        report = json.loads(path.read_text(encoding="utf-8"))
+        source_slug = source.casefold().replace(" ", "-")
+        if (report.get("passed") is not True or report.get("errors") or
+                int(report.get("booksAudited", -1)) != expected_count or
+                str(report.get("stagingSource", "")).casefold() != source_slug):
+            raise ValueError("validation report does not bind a passing exact source unit")
+        kind = "validation-report"
+    else:
+        raise ValueError("canonical source acceptance receipt is missing")
+    return {
+        "schemaVersion": 1,
+        "source": source,
+        "accepted": expected_count,
+        "receipt": path.name,
+        "receiptKind": kind,
+        "receiptSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 class RestartableStagingReceipt:

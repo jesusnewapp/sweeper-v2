@@ -94,6 +94,9 @@ It keeps continuous source work separate from live publication authority.
 An optional, standalone staged/live search utility is available in
 [`goodies/`](goodies/README.md). Operators supply their own records and categories.
 It is deliberately separate from sweeping and contains no Codex catalog data.
+The Goodies collection also includes a cross-platform
+[`Developer Interface`](goodies/developer_interface/) for monitoring and
+explicitly configured control of authorized deployments.
 
 ## Reusable projects and collection goals
 

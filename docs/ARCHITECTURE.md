@@ -62,3 +62,13 @@ An external reviewer command is the only AI integration surface. This keeps
 model choice, credentials, data governance, and prompts under the institution's
 control. A reviewer rejection is recorded; malformed output or a nonzero exit
 fails closed.
+
+## Canonical acceptance receipts
+
+Source adapters may be importer-first or validator-first. Importer-first
+adapters generally emit `import_report.json`; validator-first adapters may emit
+`validation_report.json`. `canonical_acceptance_receipt` normalizes either
+known shape into the same source/count/hash-bound evidence. A valid unit is
+therefore never stranded merely because its adapter uses the other canonical
+filename. Missing, failing, source-mismatched, or count-mismatched evidence
+still fails closed.

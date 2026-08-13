@@ -3,10 +3,37 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sweeper.receipt import RestartableStagingReceipt
+from sweeper.receipt import RestartableStagingReceipt, canonical_acceptance_receipt
 
 
 class RestartableReceiptTests(unittest.TestCase):
+    def test_validator_first_adapter_is_not_blocked_by_report_filename(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = {
+                "passed": True,
+                "errors": [],
+                "booksAudited": 1965,
+                "stagingSource": "library-of-congress",
+            }
+            (root / "validation_report.json").write_text(
+                json.dumps(report), encoding="utf-8")
+            evidence = canonical_acceptance_receipt(
+                root, "Library of Congress", 1965)
+            self.assertEqual("validation_report.json", evidence["receipt"])
+            self.assertEqual("validation-report", evidence["receiptKind"])
+            self.assertEqual(1965, evidence["accepted"])
+
+    def test_acceptance_receipt_count_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "validation_report.json").write_text(json.dumps({
+                "passed": True, "errors": [], "booksAudited": 99,
+                "stagingSource": "library-of-congress",
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact source unit"):
+                canonical_acceptance_receipt(root, "Library of Congress", 100)
+
     def test_resumes_and_emits_receipt_only_after_exact_membership(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

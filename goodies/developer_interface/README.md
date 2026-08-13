@@ -1,0 +1,62 @@
+# Web Sweeper Developer Interface
+
+The Developer Interface is a simple cross-platform control surface for Web Sweeper. It shows lane health, current stages, accepted and uploaded counts, Codex Live totals supplied by the controller, source and batch settings, and explicitly configured recovery actions.
+
+It includes:
+
+- one Flutter codebase with Android, iOS, macOS, Windows, Linux, and web targets;
+- a dependency-free Python/Tk desktop companion;
+- an authenticated Python controller bridge for desktop and mobile clients;
+- configurable readable-text colors;
+- green, yellow, orange, and red lane states;
+- a four-pad waiting game with a persistent high score and one-time round-20 message;
+- one serialized production-writer invariant.
+
+## Flutter
+
+```bash
+cd flutter
+flutter pub get
+flutter run
+```
+
+Choose the target with `flutter devices` and `flutter run -d <device>`. The shared UI is responsive; platform folders are provided for Android, iOS, macOS, Windows, Linux, and web.
+
+## Python desktop app
+
+```bash
+python3 python/developer_interface.py
+```
+
+## Controller bridge
+
+Copy `python/controller.example.json`, set its `projectRoot` and lane state paths, and add only the trusted action commands the operator intends to expose. Arbitrary commands from clients are never accepted.
+
+Local desktop use:
+
+```bash
+export WEB_SWEEPER_TOKEN='replace-with-a-long-random-token'
+python3 python/server.py --config /path/to/controller.json
+```
+
+Mobile access must use HTTPS:
+
+```bash
+export WEB_SWEEPER_TOKEN='replace-with-a-long-random-token'
+python3 python/server.py \
+  --config /path/to/controller.json \
+  --host 0.0.0.0 \
+  --cert /path/to/fullchain.pem \
+  --key /path/to/private-key.pem
+```
+
+Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only in the device's application preferences and are not part of public source. For an internet-facing deployment, use a maintained TLS reverse proxy, firewall rules, token rotation, and a private network or VPN.
+
+## Safety contract
+
+- Status is read from configured state/checkpoint/receipt files; a PID alone is not treated as progress.
+- Production publishing remains limited to one serialized writer.
+- UI actions invoke only host-configured commands and cannot accept shell text from the client.
+- Actions are disabled by default in the public example.
+- The interface does not bypass duplicate screening, publication receipts, or live verification.
+- Staged, uploaded, published, and live-verified counts remain distinct.

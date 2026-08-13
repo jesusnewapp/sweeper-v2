@@ -40,3 +40,11 @@ custom-field inquiry, and media adapters for web and JSON readers, text, images,
 audio, video, ROM-player handoff, and future operator-defined formats. Point it
 at Web Sweeper exports, a local hard drive or server, an HTTPS gateway, or a
 Firebase Cloud Function. It is read-only and never promotes staging to live.
+
+For operators and developers, [`developer_interface/`](developer_interface/)
+provides a responsive Flutter dashboard for Android, iOS, macOS, Windows,
+Linux, and web plus a Python/Tk desktop companion. It includes authenticated
+controller connectivity, lane health colors, source/batch/upload controls,
+allow-listed Switch/Bridge/Reset/Upload requests, readable-text color choices,
+and a small four-pad waiting game. Public control actions are disabled until an
+operator explicitly configures trusted host commands.
