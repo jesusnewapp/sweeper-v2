@@ -154,6 +154,32 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual("healthy", lane["health"])
             self.assertIsNotNone(lane["acceptedGrowthSince"])
 
+    def test_uploading_source_lane_is_not_healthy_without_accepted_growth(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state = root / "state.json"
+            progress = root / "staging_progress.json"
+            state.write_text(json.dumps({
+                "status": "running", "stage": "staging-upload",
+                "accepted": 4, "target": 2000,
+            }))
+            progress.write_text(json.dumps({
+                "phase": "fresh-staging-delta", "total": 4,
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{
+                    "id": "open-library", "statePath": "state.json",
+                    "progressPath": "staging_progress.json",
+                }]
+            }))
+            controller = SweeperController(config_path)
+            lane = controller.status()["lanes"][0]
+            self.assertEqual(lane["mode"], "uploading")
+            self.assertEqual(lane["health"], "watch")
+            self.assertIsNone(lane["acceptedGrowthSince"])
+
     def test_status_uses_newer_authoritative_accepted_journal_count(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -234,7 +260,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(lane["stage"], "storage-upload")
             self.assertEqual((lane["accepted"], lane["target"]), (870, 2000))
             self.assertEqual(lane["uploaded"], 400)
-            self.assertEqual(lane["health"], "healthy")
+            self.assertEqual(lane["health"], "watch")
             self.assertIn("870/2000 accepted", lane["detail"])
             self.assertEqual(lane["mode"], "uploading")
             self.assertEqual(lane["modeDetail"]["uploaded"], 400)

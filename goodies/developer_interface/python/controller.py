@@ -311,7 +311,8 @@ class SweeperController:
                 Path(current_root) / "progress.jsonl"
             )
             accepted = max(accepted, journal_accepted)
-        if current_root and checkpoint_path is not None and not checkpoint_path.exists():
+        if (current_root and checkpoint_path is not None and not checkpoint_path.exists()
+                and journal_accepted == 0):
             # A newly advanced batch has no accepted membership yet. Never
             # carry the completed prior batch's reconciliation count into it.
             accepted = 0
@@ -728,7 +729,10 @@ class SweeperController:
                 stage_observation = {"stage": stage, "since": supplied or checked_at}
                 self._stage_observations[lane_id] = stage_observation
             lane["stageSince"] = stage_observation["since"].isoformat().replace("+00:00", "Z")
-            if lane.get("mode") in {"acquisition", "discovery"}:
+            # Every configured source lane is judged by accepted growth, even
+            # while it is handing survivors to staging. Upload activity is an
+            # adjustment toward health; it is not acquisition health itself.
+            if lane_id != "publisher":
                 accepted = _count(lane.get("accepted"))
                 growth = self._accepted_growth_observations.get(lane_id)
                 if growth is None or accepted < _count(growth.get("accepted")):
