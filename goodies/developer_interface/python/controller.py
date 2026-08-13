@@ -148,6 +148,7 @@ class SweeperController:
         self._stage_observations: Dict[str, Dict[str, Any]] = {}
         self._progress_file_samples: Dict[str, Dict[str, Any]] = {}
         self._decision_journal_samples: Dict[str, Dict[str, Any]] = {}
+        self._accepted_growth_observations: Dict[str, Dict[str, Any]] = {}
 
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()
@@ -706,6 +707,11 @@ class SweeperController:
             for lane_id, observation in self._progress_observations.items()
             if lane_id in active_ids
         }
+        self._accepted_growth_observations = {
+            lane_id: observation
+            for lane_id, observation in self._accepted_growth_observations.items()
+            if lane_id in active_ids
+        }
         for lane in lanes:
             evidence = lane.pop("progressEvidence", {})
             key = _progress_key(evidence)
@@ -722,6 +728,29 @@ class SweeperController:
                 stage_observation = {"stage": stage, "since": supplied or checked_at}
                 self._stage_observations[lane_id] = stage_observation
             lane["stageSince"] = stage_observation["since"].isoformat().replace("+00:00", "Z")
+            if lane.get("mode") in {"acquisition", "discovery"}:
+                accepted = _count(lane.get("accepted"))
+                growth = self._accepted_growth_observations.get(lane_id)
+                if growth is None or accepted < _count(growth.get("accepted")):
+                    growth = {"accepted": accepted, "lastGrowth": None}
+                elif accepted > _count(growth.get("accepted")):
+                    growth = {"accepted": accepted, "lastGrowth": checked_at}
+                self._accepted_growth_observations[lane_id] = growth
+                last_growth = growth.get("lastGrowth")
+                lane["acceptedGrowthSince"] = (
+                    last_growth.isoformat().replace("+00:00", "Z")
+                    if isinstance(last_growth, datetime) else None
+                )
+                if lane.get("health") != "failed":
+                    if not isinstance(last_growth, datetime):
+                        lane["health"] = "watch"
+                    else:
+                        growth_age = (checked_at - last_growth).total_seconds()
+                        lane["health"] = (
+                            "healthy" if growth_age <= 300
+                            else "watch" if growth_age <= 900
+                            else "stuck"
+                        )
         codex_live = _count(metrics.get("codexLive", self.config.get("codexLive", 0)))
         publisher_live = max((_count(lane.get("codexLive")) for lane in lanes), default=0)
         codex_live = max(codex_live, publisher_live)

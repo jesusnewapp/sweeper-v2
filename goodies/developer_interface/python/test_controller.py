@@ -127,10 +127,32 @@ class ControllerTests(unittest.TestCase):
             status = SweeperController(config_path).status()
             self.assertEqual(status["codexLive"], 42)
             self.assertEqual(status["lanes"][0]["accepted"], 321)
-            self.assertEqual(status["lanes"][0]["health"], "healthy")
+            self.assertEqual(status["lanes"][0]["health"], "watch")
             self.assertEqual(status["lanes"][0]["mode"], "acquisition")
             self.assertIn("progressSince", status["lanes"][0])
             self.assertEqual(status["productionWriterLimit"], 1)
+
+    def test_acquisition_health_requires_observed_accepted_growth(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state_path = root / "state.json"
+            state_path.write_text(json.dumps({
+                "status": "running", "stage": "prepare", "accepted": 4, "target": 2000,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            self.assertEqual("watch", controller.status()["lanes"][0]["health"])
+            state = json.loads(state_path.read_text())
+            state["accepted"] = 5
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            lane = controller.status()["lanes"][0]
+            self.assertEqual("healthy", lane["health"])
+            self.assertIsNotNone(lane["acceptedGrowthSince"])
 
     def test_status_uses_newer_authoritative_accepted_journal_count(self):
         with tempfile.TemporaryDirectory() as temporary:
