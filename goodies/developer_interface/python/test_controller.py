@@ -45,7 +45,10 @@ class ControllerTests(unittest.TestCase):
                 "acceptedInCurrentBatch": 6, "currentBatchSize": 2000,
             }), encoding="utf-8")
             progress = root / "discovery.partial.json"
-            progress.write_text("page-149", encoding="utf-8")
+            progress.write_text(json.dumps({
+                "completed": ["page-149", "page-150"],
+                "records": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+            }), encoding="utf-8")
             config_path = root / "config.json"
             config_path.write_text(json.dumps({
                 "projectRoot": str(root),
@@ -53,8 +56,17 @@ class ControllerTests(unittest.TestCase):
                            "progressPaths": ["discovery.partial.json"]}],
             }), encoding="utf-8")
             controller = SweeperController(config_path)
-            first = controller.status()["lanes"][0]["progressSince"]
-            progress.write_text("page-150-with-more-evidence", encoding="utf-8")
+            first_lane = controller.status()["lanes"][0]
+            first = first_lane["progressSince"]
+            self.assertEqual("discovery", first_lane["stage"])
+            self.assertIn("moving smoothly", first_lane["detail"])
+            self.assertEqual("discovery", first_lane["mode"])
+            self.assertEqual(2, first_lane["modeDetail"]["pagesCompleted"])
+            self.assertEqual(3, first_lane["modeDetail"]["candidateRecords"])
+            progress.write_text(json.dumps({
+                "completed": ["page-149", "page-150", "page-151"],
+                "records": [{"id": str(index)} for index in range(5)],
+            }), encoding="utf-8")
             second = controller.status()["lanes"][0]["progressSince"]
             self.assertNotEqual(first, second)
 
@@ -143,6 +155,8 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(lane["uploaded"], 400)
             self.assertEqual(lane["health"], "healthy")
             self.assertIn("870/2000 accepted", lane["detail"])
+            self.assertEqual(lane["mode"], "uploading")
+            self.assertEqual(lane["modeDetail"]["uploaded"], 400)
 
     def test_publisher_uses_exact_phase_counter_not_prepared_total(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -180,6 +194,8 @@ class ControllerTests(unittest.TestCase):
             self.assertIn("17 duplicates removed", lane["detail"])
             self.assertEqual(0, lane["queueReady"])
             self.assertIn("1 queued behind current", lane["detail"])
+            self.assertEqual(lane["mode"], "uploading")
+            self.assertEqual(lane["modeDetail"]["prepared"], 870)
 
     def test_publisher_distinguishes_ready_from_parked_queue_units(self):
         with tempfile.TemporaryDirectory() as temporary:

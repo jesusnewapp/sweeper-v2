@@ -113,10 +113,31 @@ class SweeperController:
         self.project_root = Path(root).expanduser().resolve()
         self._progress_observations: Dict[str, Dict[str, Any]] = {}
         self._stage_observations: Dict[str, Dict[str, Any]] = {}
+        self._progress_file_samples: Dict[str, Dict[str, Any]] = {}
 
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()
         return path if path.is_absolute() else self.project_root / path
+
+    def _sample_progress_file(self, path: Path, metadata: os.stat_result) -> Dict[str, Any]:
+        """Sample potentially large discovery journals at most every 30 seconds."""
+        key = str(path)
+        now = datetime.now(timezone.utc)
+        cached = self._progress_file_samples.get(key)
+        if cached and (now - cached["sampledAt"]).total_seconds() < 30:
+            return dict(cached["value"])
+        payload = _read_json(path)
+        value = {
+            "pagesCompleted": _count(payload.get("completed")),
+            "candidateRecords": _count(payload.get("records")),
+            "journalBytes": metadata.st_size,
+            "journalUpdatedAt": datetime.fromtimestamp(
+                metadata.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+            "sampledAt": now.isoformat().replace("+00:00", "Z"),
+            "sampleCadenceSeconds": 30,
+        }
+        self._progress_file_samples[key] = {"sampledAt": now, "value": value}
+        return dict(value)
 
     def _lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         if definition.get("kind") == "publisher":
@@ -153,12 +174,28 @@ class SweeperController:
         progress_updated = _first(progress, ("updatedAt", "checkpointTimestamp"), "")
         state_observed = _timestamp(state_updated)
         progress_observed = _timestamp(progress_updated)
-        updated = (
-            progress_updated
-            if progress_observed and (not state_observed or progress_observed > state_observed)
-            else state_updated
-        )
-        observed = _timestamp(updated)
+        supplemental_progress = []
+        supplemental_detail: Dict[str, Any] = {}
+        supplemental_observed: Optional[datetime] = None
+        for value in definition.get("progressPaths", []):
+            try:
+                path = self._path(str(value))
+                metadata = path.stat()
+                observed_at = datetime.fromtimestamp(metadata.st_mtime, timezone.utc)
+                if supplemental_observed is None or observed_at > supplemental_observed:
+                    supplemental_observed = observed_at
+                supplemental_progress.append({
+                    "path": str(value),
+                    "size": metadata.st_size,
+                    "modifiedNs": metadata.st_mtime_ns,
+                })
+                supplemental_detail.update(self._sample_progress_file(path, metadata))
+            except (OSError, TypeError):
+                supplemental_progress.append({"path": str(value), "missing": True})
+        observed_candidates = [value for value in (
+            state_observed, progress_observed, supplemental_observed) if value is not None]
+        observed = max(observed_candidates) if observed_candidates else None
+        updated = observed.isoformat().replace("+00:00", "Z") if observed else state_updated
         age = (datetime.now(timezone.utc) - observed).total_seconds() if observed else None
         progress_active = bool(
             progress_phase
@@ -178,18 +215,35 @@ class SweeperController:
         display_accepted = accepted
         display_target = target
         detail = definition.get("detail", f"State: {state_path.name}")
-        supplemental_progress = []
-        for value in definition.get("progressPaths", []):
-            try:
-                path = self._path(str(value))
-                metadata = path.stat()
-                supplemental_progress.append({
-                    "path": str(value),
-                    "size": metadata.st_size,
-                    "modifiedNs": metadata.st_mtime_ns,
-                })
-            except (OSError, TypeError):
-                supplemental_progress.append({"path": str(value), "missing": True})
+        discovery_age = (
+            (datetime.now(timezone.utc) - supplemental_observed).total_seconds()
+            if supplemental_observed else None
+        )
+        if (not progress_active and stage.casefold() in {"prepare", "discovery"} and
+                discovery_age is not None and discovery_age <= 90):
+            stage = "discovery"
+            detail = "Discovery mode · moving smoothly · 30-second checkpoint signal"
+        uploading_mode = progress_active or any(
+            marker in stage.casefold() for marker in ("upload", "staging", "verification", "verify")
+        )
+        mode = "uploading" if uploading_mode else "discovery"
+        mode_detail = {
+            "mode": mode,
+            "stage": stage,
+            "accepted": accepted,
+            "target": target,
+            "discovered": _count(_first(checkpoint, ("discovered", "discoveredCount"),
+                                       _first(state, ("discovered", "discoveredCount"), 0))),
+            "prefiltered": _count(_first(checkpoint, ("prefiltered", "prefilteredCount"),
+                                        _first(state, ("prefiltered", "prefilteredCount"), 0))),
+            "discoveryFrontier": _count(_first(state, ("discoveryFrontier", "frontier"), 0)),
+            "candidateOffset": _count(_first(state, ("candidateOffset", "cursor", "page"), 0)),
+            "uploaded": uploaded,
+            "uploadTarget": int(progress.get("total") or target),
+            "checkpointUpdatedAt": state_updated,
+            "uploadUpdatedAt": progress_updated,
+            **supplemental_detail,
+        }
         if progress_active:
             display_accepted = uploaded
             display_target = int(progress.get("total") or accepted or target)
@@ -207,6 +261,8 @@ class SweeperController:
             "detail": detail,
             "updatedAt": updated,
             "currentRoot": current_root,
+            "mode": mode,
+            "modeDetail": mode_detail,
             "progressEvidence": {
                 "stage": stage,
                 "accepted": accepted,
@@ -233,6 +289,8 @@ class SweeperController:
         latest = advances[-1] if isinstance(advances, list) and advances else {}
         current_root = str(state.get("currentUnit") or latest.get("root") or "")
         current = bool(state.get("currentUnit"))
+        publication: Dict[str, Any] = {}
+        promotion: Dict[str, Any] = {}
         if current:
             root = Path(current_root)
             catalog = _read_json(root / "catalog.json").get("books", [])
@@ -268,6 +326,9 @@ class SweeperController:
         else:
             last_published = _count(latest.get("published"))
             last_verified = _count(latest.get("liveVerified"))
+            if current_root:
+                publication = _read_json(Path(current_root) / "publication_verification.json")
+                promotion = _read_json(Path(current_root) / "promotion_validation.json")
             published = 0
             verified = 0
             accepted = 0
@@ -306,6 +367,26 @@ class SweeperController:
             if isinstance(state.get("automaticContinuation"), dict)
             else {}
         )
+        mode = "uploading" if "upload" in stage.casefold() else "verification"
+        mode_detail = {
+            "mode": mode,
+            "stage": stage,
+            "prepared": accepted,
+            "duplicatesRemoved": duplicate_removed,
+            "uploaded": uploaded,
+            "uploadTarget": target if mode == "uploading" else accepted,
+            "published": published if current else last_published,
+            "liveVerified": verified if current else last_verified,
+            "queueReady": ready_units,
+            "queueParked": parked_units,
+            "queuePreflight": preflight_units,
+            "publicationReceipt": bool(publication),
+            "promotionReceipt": bool(promotion),
+            "writerSerialized": True,
+            "currentRoot": current_root,
+            "unitUpdatedAt": updated,
+            "watcherCheckedAt": state.get("checkedAt", ""),
+        }
         return {
             "id": definition.get("id", "publisher"),
             "name": definition.get("name", "Stage-to-live publisher"),
@@ -330,6 +411,8 @@ class SweeperController:
             "queuePreflight": preflight_units,
             "updatedAt": updated,
             "currentRoot": current_root,
+            "mode": mode,
+            "modeDetail": mode_detail,
             "progressSince": latest.get("completedAt") if not current else None,
             "codexLive": _count(
                 _read_json(Path(current_root) / "promotion_validation.json").get(

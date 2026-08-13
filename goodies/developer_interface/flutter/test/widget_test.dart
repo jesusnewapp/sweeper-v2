@@ -101,6 +101,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('discovery mode opens exact live journal details', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'library-of-congress',
+              name: 'Library of Congress',
+              stage: 'discovery',
+              mode: 'discovery',
+              modeDetail: {
+                'stage': 'discovery',
+                'pagesCompleted': 152,
+                'candidateRecords': 450,
+                'sampleCadenceSeconds': 30,
+              },
+              accepted: 6,
+              target: 2000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'Discovery mode · moving smoothly',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 3,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'discovery',
+              since: since,
+            ),
+            now: since.add(const Duration(seconds: 30)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('mode-pill-library-of-congress')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Discovery Mode'), findsOneWidget);
+    expect(find.text('Pages completed'), findsOneWidget);
+    expect(find.text('152'), findsOneWidget);
+    expect(find.text('Candidate records'), findsOneWidget);
+    expect(find.text('450'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('close-mode-library-of-congress')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('mode-dialog-library-of-congress')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('publisher verification mode exposes receipt details', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'publisher',
+              name: 'Stage-to-live publisher',
+              stage: 'live-verification',
+              mode: 'verification',
+              modeDetail: {
+                'stage': 'live-verification',
+                'published': 853,
+                'liveVerified': 812,
+                'publicationReceipt': true,
+                'promotionReceipt': false,
+              },
+              accepted: 812,
+              target: 853,
+              uploaded: 853,
+              health: Health.healthy,
+              detail: 'Verification in progress',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 952,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'live-verification',
+              since: since,
+            ),
+            now: since.add(const Duration(seconds: 20)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('mode-pill-publisher')));
+    await tester.pumpAndSettle();
+    expect(find.text('Verification Mode'), findsOneWidget);
+    expect(find.text('Live verified'), findsOneWidget);
+    expect(find.text('812'), findsAtLeastNWidgets(1));
+    expect(find.text('Promotion receipt'), findsOneWidget);
+  });
+
   testWidgets('push remains disabled until five minutes without movement', (
     tester,
   ) async {

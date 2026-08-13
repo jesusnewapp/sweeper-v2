@@ -203,7 +203,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           progressTenthsPercent: key,
           since: supplied ?? now,
         );
-      } else if (supplied != null && supplied.isBefore(current.since)) {
+      } else if (supplied != null && supplied.isAfter(current.since)) {
         _progressObservations[model.id] = ProgressObservation(
           progressTenthsPercent: key,
           since: supplied,
@@ -1068,6 +1068,8 @@ class ModelView {
     required this.uploaded,
     required this.health,
     required this.detail,
+    this.mode = 'discovery',
+    this.modeDetail = const {},
     this.progressSince,
     this.stageSince,
   });
@@ -1079,6 +1081,8 @@ class ModelView {
   final int uploaded;
   final Health health;
   final String detail;
+  final String mode;
+  final Map<String, dynamic> modeDetail;
   final DateTime? progressSince;
   final DateTime? stageSince;
 
@@ -1101,6 +1105,14 @@ class ModelView {
         orElse: () => Health.watch,
       ),
       detail: json['detail'] as String? ?? 'No current detail',
+      mode:
+          json['mode'] as String? ??
+          ((json['id'] as String? ?? '') == 'publisher'
+              ? 'verification'
+              : 'discovery'),
+      modeDetail: json['modeDetail'] is Map
+          ? Map<String, dynamic>.from(json['modeDetail'] as Map)
+          : const {},
       progressSince: DateTime.tryParse(json['progressSince'] as String? ?? ''),
       stageSince: DateTime.tryParse(json['stageSince'] as String? ?? ''),
     );
@@ -1217,6 +1229,118 @@ class ModelCard extends StatelessWidget {
     Health.failed => const Color(0xffff4e5b),
   };
 
+  String get modeLabel {
+    if (model.mode.toLowerCase() == 'uploading') return 'Uploading Mode';
+    if (model.id == 'publisher') return 'Verification Mode';
+    return 'Discovery Mode';
+  }
+
+  String _detailLabel(String key) => switch (key) {
+    'stage' => 'Exact gate',
+    'accepted' => 'Accepted',
+    'target' => 'Target',
+    'discovered' => 'Discovered',
+    'prefiltered' => 'Prefiltered',
+    'pagesCompleted' => 'Pages completed',
+    'candidateRecords' => 'Candidate records',
+    'discoveryFrontier' => 'Discovery frontier',
+    'candidateOffset' => 'Candidate offset',
+    'prepared' => 'Prepared',
+    'duplicatesRemoved' => 'Duplicates removed',
+    'uploaded' => 'Uploaded',
+    'uploadTarget' => 'Upload target',
+    'published' => 'Published',
+    'liveVerified' => 'Live verified',
+    'queueReady' => 'Queue ready',
+    'queueParked' => 'Queue parked',
+    'queuePreflight' => 'Queue preflight',
+    'publicationReceipt' => 'Publication receipt',
+    'promotionReceipt' => 'Promotion receipt',
+    'writerSerialized' => 'Serialized writer',
+    'journalUpdatedAt' => 'Journal updated',
+    'sampledAt' => 'Detail sampled',
+    'sampleCadenceSeconds' => 'Sample cadence (seconds)',
+    'checkpointUpdatedAt' => 'Checkpoint updated',
+    'uploadUpdatedAt' => 'Upload updated',
+    'unitUpdatedAt' => 'Unit updated',
+    'watcherCheckedAt' => 'Watcher checked',
+    'journalBytes' => 'Journal bytes',
+    'currentRoot' => 'Current root',
+    _ => key,
+  };
+
+  void _showModeDetails(BuildContext context) {
+    final entries = model.modeDetail.entries
+        .where((entry) => entry.key != 'mode')
+        .toList();
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: ValueKey('mode-dialog-${model.id}'),
+        titlePadding: const EdgeInsets.fromLTRB(20, 14, 8, 4),
+        title: Row(
+          children: [
+            Icon(
+              model.mode == 'uploading'
+                  ? Icons.cloud_upload_outlined
+                  : model.id == 'publisher'
+                  ? Icons.verified_outlined
+                  : Icons.travel_explore_rounded,
+              color: color,
+            ),
+            const SizedBox(width: 9),
+            Expanded(child: Text(modeLabel)),
+            IconButton(
+              key: ValueKey('close-mode-${model.id}'),
+              tooltip: 'Close details',
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final entry in entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: Text(
+                            _detailLabel(entry.key),
+                            style: const TextStyle(color: Color(0xff83a891)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            '${entry.value}',
+                            key: ValueKey(
+                              'mode-detail-${model.id}-${entry.key}',
+                            ),
+                            textAlign: TextAlign.end,
+                            softWrap: true,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final progress = model.progress;
@@ -1298,6 +1422,26 @@ class ModelCard extends StatelessWidget {
                 fontSize: 11,
                 color: color,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ActionChip(
+                key: ValueKey('mode-pill-${model.id}'),
+                avatar: Icon(
+                  model.mode == 'uploading'
+                      ? Icons.cloud_upload_outlined
+                      : model.id == 'publisher'
+                      ? Icons.verified_outlined
+                      : Icons.travel_explore_rounded,
+                  size: 15,
+                  color: color,
+                ),
+                label: Text('$modeLabel · details'),
+                onPressed: () => _showModeDetails(context),
+                side: BorderSide(color: color.withValues(alpha: 0.65)),
+                backgroundColor: color.withValues(alpha: 0.08),
               ),
             ),
             const SizedBox(height: 14),

@@ -74,6 +74,15 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
 - Source adapters whose page journal is separate from their lane state can list
   trusted `progressPaths`; file-size or modification movement then resets the
   progress clock without parsing or exposing the journal contents.
+- A recent discovery journal presents the lane explicitly as `discovery` with
+  “moving smoothly” status. Its controller heartbeat is grouped as a 30-second
+  checkpoint signal while exact accepted counts remain unchanged.
+- Acquisition cards expose a pressable **Discovery Mode** or **Uploading Mode**
+  pill with exact page, candidate, checkpoint, and upload details. Large
+  discovery journals are sampled no more than once every 30 seconds.
+- The publisher exposes **Verification Mode** or **Uploading Mode**. Its
+  dismissible details show the exact gate, receipts, counts, queue state, and
+  timestamps while upload counts remain visible on the card.
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.
