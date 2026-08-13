@@ -79,7 +79,11 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
   checkpoint signal while exact accepted counts remain unchanged.
 - Acquisition cards expose a pressable **Discovery Mode** or **Uploading Mode**
   pill with exact page, candidate, checkpoint, and upload details. Large
-  discovery journals are sampled no more than once every 30 seconds.
+  discovery journals are sampled no more than once every 30 seconds. During
+  discovery, the card foregrounds unique pages completed, candidate inventory,
+  and accepted survivors instead of displaying a misleading zero-upload line.
+  Recent query movement is computed from newly completed page keys, so lexical
+  checkpoint ordering cannot look like a repeated request cycle.
 - The publisher exposes **Verification Mode** or **Uploading Mode**. Its
   dismissible details show the exact gate, receipts, counts, queue state, and
   timestamps while upload counts remain visible on the card.
@@ -89,6 +93,10 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
   the exact unchanged-evidence age and scale yellow to orange to red at five
   minutes; any durable counter, journal, receipt, or timestamp movement resets
   that clock.
+- A receipt-complete acquisition unit keeps a rainbow **Staged** state until
+  its lane resets. A publication and live-verification-complete unit keeps a
+  rainbow **Published** state until the serialized publisher selects its next
+  unit. These states come from exact completion evidence, not attempted counts.
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.

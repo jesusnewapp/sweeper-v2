@@ -127,16 +127,34 @@ class SweeperController:
         if cached and (now - cached["sampledAt"]).total_seconds() < 30:
             return dict(cached["value"])
         payload = _read_json(path)
+        completed = set(map(str, payload.get("completed", [])))
+        prior_completed = cached.get("completed", set()) if cached else set()
+        newly_completed = completed - prior_completed
+        recent_queries = sorted({
+            checkpoint.rsplit("\n", 1)[0]
+            for checkpoint in newly_completed
+            if "\n" in checkpoint
+        })
         value = {
-            "pagesCompleted": _count(payload.get("completed")),
+            "pagesCompleted": len(completed),
             "candidateRecords": _count(payload.get("records")),
+            "newlyCompletedPages": len(newly_completed),
+            "recentQueries": recent_queries,
+            "activeQuery": payload.get("activeQuery", ""),
+            "activePage": _count(payload.get("activePage")),
+            "lastCompletedQuery": payload.get("lastCompletedQuery", ""),
+            "lastCompletedPage": _count(payload.get("lastCompletedPage")),
             "journalBytes": metadata.st_size,
             "journalUpdatedAt": datetime.fromtimestamp(
                 metadata.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
             "sampledAt": now.isoformat().replace("+00:00", "Z"),
             "sampleCadenceSeconds": 30,
         }
-        self._progress_file_samples[key] = {"sampledAt": now, "value": value}
+        self._progress_file_samples[key] = {
+            "sampledAt": now,
+            "value": value,
+            "completed": completed,
+        }
         return dict(value)
 
     def _lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
@@ -163,6 +181,12 @@ class SweeperController:
         target = int(_first(state, ("currentBatchSize", "batchSize", "target"), definition.get("target", 0)) or 0)
         uploaded = int(_first(progress, ("uploaded", "uploadedCount", "verified"), 0) or 0)
         progress_phase = str(progress.get("phase", ""))
+        progress_total = int(progress.get("total") or accepted or target)
+        staged_complete = bool(
+            progress_phase == "complete"
+            and uploaded > 0
+            and uploaded >= progress_total
+        )
         stage = progress_phase if progress_phase and progress_phase != "complete" else str(
             _first(state, ("stage", "status"), "inactive")
         )
@@ -240,6 +264,7 @@ class SweeperController:
             "candidateOffset": _count(_first(state, ("candidateOffset", "cursor", "page"), 0)),
             "uploaded": uploaded,
             "uploadTarget": int(progress.get("total") or target),
+            "completionState": "staged" if staged_complete else "",
             "checkpointUpdatedAt": state_updated,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
@@ -382,6 +407,13 @@ class SweeperController:
             "queuePreflight": preflight_units,
             "publicationReceipt": bool(publication),
             "promotionReceipt": bool(promotion),
+            "completionState": (
+                "published"
+                if (published if current else last_published) > 0
+                and (verified if current else last_verified)
+                >= (published if current else last_published)
+                else ""
+            ),
             "writerSerialized": True,
             "currentRoot": current_root,
             "unitUpdatedAt": updated,

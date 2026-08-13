@@ -63,6 +63,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual("discovery", first_lane["mode"])
             self.assertEqual(2, first_lane["modeDetail"]["pagesCompleted"])
             self.assertEqual(3, first_lane["modeDetail"]["candidateRecords"])
+            self.assertEqual(2, first_lane["modeDetail"]["newlyCompletedPages"])
             progress.write_text(json.dumps({
                 "completed": ["page-149", "page-150", "page-151"],
                 "records": [{"id": str(index)} for index in range(5)],
@@ -158,6 +159,32 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(lane["mode"], "uploading")
             self.assertEqual(lane["modeDetail"]["uploaded"], 400)
 
+    def test_completed_staging_unit_exposes_persistent_staged_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit"
+            unit.mkdir()
+            (unit / "checkpoint.json").write_text(
+                json.dumps({"acceptedCount": 44}), encoding="utf-8"
+            )
+            (unit / "staging_upload_progress.json").write_text(
+                json.dumps({"phase": "complete", "uploaded": 44, "total": 44,
+                            "updatedAt": datetime.now(timezone.utc).isoformat()}),
+                encoding="utf-8",
+            )
+            (root / "state.json").write_text(
+                json.dumps({"status": "running", "stage": "staged",
+                            "currentRoot": str(unit), "currentBatchSize": 2000}),
+                encoding="utf-8",
+            )
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual("staged", lane["modeDetail"]["completionState"])
+
     def test_publisher_uses_exact_phase_counter_not_prepared_total(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -239,6 +266,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(lane["uploaded"], 0)
             self.assertIn("Last completed: 853 published", lane["detail"])
             self.assertIn("0 ready · 2 parked · 3 preflight", lane["detail"])
+            self.assertEqual("published", lane["modeDetail"]["completionState"])
 
     def test_model_slot_preferences_are_bounded_and_persisted(self):
         with tempfile.TemporaryDirectory() as temporary:

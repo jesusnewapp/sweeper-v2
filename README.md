@@ -211,7 +211,10 @@ a completed source or a reason to wait for an external restart. Do not infer
 source or collection exhaustion from a timer. Exhaustion requires the configured
 deterministic frontier to finish with no unvisited query pages, cursors, or
 records. Rate-limited discovery may hold its accepted count steady while its
-page checkpoint and candidate inventory continue to grow.
+page checkpoint and candidate inventory continue to grow. Keep discovery and
+acquisition as distinct one-way gates: finish the configured discovery window,
+then process and stage its survivors. Do not alternate gates merely to create
+visible counter movement; expose unique page and candidate progress instead.
 
 Track successful automatic advances separately from manual restarts,
 monitor-triggered recoveries, and crash recoveries. Operators select each

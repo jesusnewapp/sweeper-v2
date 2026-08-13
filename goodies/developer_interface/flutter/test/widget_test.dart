@@ -67,6 +67,52 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('completed unit keeps a celebratory published state', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'publisher',
+              name: 'Stage-to-live publisher',
+              stage: 'Listening for next exact staged unit',
+              accepted: 0,
+              target: 0,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'Last completed: 1376 published',
+              mode: 'verification',
+              modeDetail: {
+                'completionState': 'published',
+                'published': 1376,
+                'liveVerified': 1376,
+              },
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 0,
+              since: now,
+            ),
+            stageObservation: StageObservation(
+              stage: 'Listening for next exact staged unit',
+              since: now,
+            ),
+            now: now,
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('completion-pill-publisher')),
+      findsOneWidget,
+    );
+    expect(find.text('Published'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('acquisition search gate has a timed health signal', (
     tester,
   ) async {
@@ -106,6 +152,47 @@ void main() {
     expect(find.text('prepare'), findsNothing);
     expect(find.text('Discovery · 37s'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('discovery foregrounds page and candidate movement', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'library-of-congress',
+              name: 'Library of Congress',
+              stage: 'discovery',
+              mode: 'discovery',
+              modeDetail: {'pagesCompleted': 146, 'candidateRecords': 130},
+              accepted: 7,
+              target: 2000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'Discovery mode · moving smoothly',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 4,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'discovery',
+              since: since,
+            ),
+            now: since.add(const Duration(seconds: 13)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.text('146 pages · 130 candidates · 7 accepted'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('0 uploaded'), findsNothing);
   });
 
   testWidgets('discovery mode opens exact live journal details', (

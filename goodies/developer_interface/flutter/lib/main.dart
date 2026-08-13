@@ -1266,6 +1266,12 @@ class ModelCard extends StatelessWidget {
     'prefiltered' => 'Prefiltered',
     'pagesCompleted' => 'Pages completed',
     'candidateRecords' => 'Candidate records',
+    'newlyCompletedPages' => 'Pages in latest sample',
+    'recentQueries' => 'Queries advancing',
+    'activeQuery' => 'Current query',
+    'activePage' => 'Current page',
+    'lastCompletedQuery' => 'Last completed query',
+    'lastCompletedPage' => 'Last completed page',
     'discoveryFrontier' => 'Discovery frontier',
     'candidateOffset' => 'Candidate offset',
     'prepared' => 'Prepared',
@@ -1279,6 +1285,7 @@ class ModelCard extends StatelessWidget {
     'queuePreflight' => 'Queue preflight',
     'publicationReceipt' => 'Publication receipt',
     'promotionReceipt' => 'Promotion receipt',
+    'completionState' => 'Completed state',
     'writerSerialized' => 'Serialized writer',
     'journalUpdatedAt' => 'Journal updated',
     'sampledAt' => 'Detail sampled',
@@ -1385,6 +1392,20 @@ class ModelCard extends StatelessWidget {
     final gateSeconds = max(0, stageHeldFor.inSeconds);
     final pushReady = heldFor.inSeconds >= 300;
     final modeColor = _modeColor(heldFor);
+    final pagesCompleted = (model.modeDetail['pagesCompleted'] as num?)
+        ?.toInt();
+    final candidateRecords = (model.modeDetail['candidateRecords'] as num?)
+        ?.toInt();
+    final discoverySummary = model.mode == 'discovery' && pagesCompleted != null
+        ? '$pagesCompleted pages · ${candidateRecords ?? 0} candidates · '
+              '${model.accepted} accepted'
+        : null;
+    final completionState = '${model.modeDetail['completionState'] ?? ''}';
+    final completionLabel = switch (completionState) {
+      'published' => 'Published',
+      'staged' => 'Staged',
+      _ => '',
+    };
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -1454,6 +1475,56 @@ class ModelCard extends StatelessWidget {
                 spacing: 7,
                 runSpacing: 7,
                 children: [
+                  if (completionLabel.isNotEmpty)
+                    Container(
+                      key: ValueKey('completion-pill-${model.id}'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xffef476f),
+                            Color(0xffffd166),
+                            Color(0xff35d07f),
+                            Color(0xff4cc9f0),
+                            Color(0xffb06cff),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xff4cc9f0,
+                            ).withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            completionState == 'published'
+                                ? Icons.celebration_rounded
+                                : Icons.inventory_2_rounded,
+                            size: 15,
+                            color: const Color(0xff06160f),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            completionLabel,
+                            style: const TextStyle(
+                              color: Color(0xff06160f),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   AnimatedContainer(
                     key: ValueKey('active-pill-${model.id}'),
                     duration: const Duration(milliseconds: 350),
@@ -1535,7 +1606,8 @@ class ModelCard extends StatelessWidget {
             ),
             const SizedBox(height: 9),
             Text(
-              '${(progress * 100).toStringAsFixed(1)}% · ${model.uploaded} uploaded',
+              discoverySummary ??
+                  '${(progress * 100).toStringAsFixed(1)}% · ${model.uploaded} uploaded',
               softWrap: true,
             ),
             if (heldFor.inSeconds >= 10) ...[
