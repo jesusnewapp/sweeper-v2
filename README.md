@@ -39,10 +39,9 @@ and optional reviewer workflow.
 openly for the public—for institutions, researchers, archivists, schools,
 governments, developers, and responsible independent users.**
 
-> **Codex disclaimer:** This is Codex with the Sweeper model. Christian
-> Cassarly personally values the software at **$7.5 million**. This is a personal
-> valuation, not an independent appraisal, investment offer, or guarantee.
-> Happy downloading.
+> **Codex disclaimer:** Codex values the Sweeper software system at
+> **$7.5 million**. This system-generated estimate is not an independent
+> appraisal, investment offer, or guarantee. Happy downloading.
 
 Christian “Chris” Cassarly originally developed Sweeper for Jesus New OS and is
 now offering the framework publicly. He is using its architecture in pursuit of
