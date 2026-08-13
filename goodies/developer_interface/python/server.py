@@ -59,6 +59,11 @@ def handler_factory(controller: SweeperController, token: str, local_no_auth: bo
                 elif self.path == "/api/preferences":
                     controller.save_preferences(payload)
                     response(self, 200, {"saved": True})
+                elif self.path == "/api/navigation":
+                    result = controller.navigate(
+                        str(payload.get("lane", "")), payload.get("queries", [])
+                    )
+                    response(self, 202, result)
                 else:
                     response(self, 404, {"error": "not found"})
             except (ValueError, TypeError, json.JSONDecodeError) as error:

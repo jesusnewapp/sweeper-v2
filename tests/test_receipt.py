@@ -6,11 +6,29 @@ from pathlib import Path
 from sweeper.receipt import (
     RestartableStagingReceipt,
     canonical_acceptance_receipt,
+    exact_live_overlap_completion,
     migrate_legacy_staging_verification,
 )
 
 
 class RestartableReceiptTests(unittest.TestCase):
+    def test_exact_live_overlap_does_not_depend_on_reason_wording(self):
+        verification = {
+            "published": 0,
+            "verified": 0,
+            "preparedBookIds": ["exact", "edition"],
+            "removedOverlapIds": ["edition", "exact"],
+            "removedLiveOverlaps": [
+                {"bookId": "exact", "reasons": ["already published"]},
+                {"bookId": "edition", "reasons": ["title-author overlap"]},
+            ],
+            "startingLiveRevision": {"publishedBooks": 100, "identitySha256": "abc"},
+            "finalLiveRevision": {"publishedBooks": 100, "identitySha256": "abc"},
+        }
+        self.assertTrue(exact_live_overlap_completion(verification, 2))
+        verification["removedOverlapIds"] = ["exact", "different"]
+        self.assertFalse(exact_live_overlap_completion(verification, 2))
+
     def test_exact_legacy_verification_migrates_without_reupload(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

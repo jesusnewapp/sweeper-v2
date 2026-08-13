@@ -26,6 +26,38 @@ def _acceptance_count(report: dict) -> int:
     return values[0] if values and len(set(values)) == 1 else -1
 
 
+def exact_live_overlap_completion(verification: dict, expected_count: int) -> bool:
+    """Recognize a fully live no-write unit from exact identity evidence.
+
+    Adapters must not depend on human-readable duplicate reason text. A unit is
+    already live only when every prepared ID is represented exactly once in
+    both the removed-ID list and the detailed overlap rows, and the live index
+    revision remains identical across the no-write verification pass.
+    """
+    if expected_count < 1:
+        return False
+    if int(verification.get("published", 0)) != 0 or int(verification.get("verified", 0)) != 0:
+        return False
+    prepared = [str(value) for value in verification.get("preparedBookIds", [])]
+    removed = [str(value) for value in verification.get("removedOverlapIds", [])]
+    overlaps = verification.get("removedLiveOverlaps", [])
+    overlap_ids = [str(row.get("bookId", "")) for row in overlaps if isinstance(row, dict)]
+    if any(len(values) != expected_count or len(set(values)) != expected_count
+           for values in (prepared, removed, overlap_ids)):
+        return False
+    if set(prepared) != set(removed) or set(prepared) != set(overlap_ids):
+        return False
+    starting = verification.get("startingLiveRevision", {})
+    final = verification.get("finalLiveRevision", {})
+    if not isinstance(starting, dict) or not isinstance(final, dict):
+        return False
+    return (
+        int(starting.get("publishedBooks", -1)) == int(final.get("publishedBooks", -2))
+        and bool(starting.get("identitySha256"))
+        and starting.get("identitySha256") == final.get("identitySha256")
+    )
+
+
 def canonical_acceptance_receipt(workspace: Path, source: str,
                                  expected_count: int) -> dict:
     """Normalize a source adapter's exact acceptance evidence.

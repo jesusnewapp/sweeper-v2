@@ -131,6 +131,18 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       return ModelSlotDraft(
         name: 'Library of Congress',
         connector: 'https://www.loc.gov/apis/',
+        navigationQueries: const [
+          'Sermons, English',
+          'Bible commentaries',
+          'Theology, Doctrinal',
+          'Christian stories',
+          'Devotional literature',
+          'Christian biography',
+          'Church history',
+          'Missions',
+          'Christian education',
+          'Religious poetry, English',
+        ],
       );
     }
     return ModelSlotDraft();
@@ -393,6 +405,40 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
     } catch (error) {
       if (mounted) _notice('Configuration not saved · $error');
+    }
+  }
+
+  Future<void> _saveNavigation() async {
+    final slot = _modelSlots[_selectedSlot];
+    final selected = _models.firstWhere(
+      (model) => model.name == slot.name.trim(),
+      orElse: () => _models[_selectedSlot.clamp(0, _models.length - 1)],
+    );
+    try {
+      final base = _endpoint.endsWith('/')
+          ? _endpoint.substring(0, _endpoint.length - 1)
+          : _endpoint;
+      final response = await http
+          .post(
+            Uri.parse('$base/api/navigation'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+            },
+            body: jsonEncode({
+              'lane': selected.id,
+              'queries': slot.navigationQueries,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      _notice(
+        response.statusCode == 202
+            ? 'Navigation pool saved for ${selected.name}'
+            : 'Navigation not saved · controller ${response.statusCode}',
+      );
+    } catch (error) {
+      if (mounted) _notice('Navigation not saved · $error');
     }
   }
 
@@ -718,6 +764,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             const SizedBox(height: 14),
             _modelConfiguration(),
             const SizedBox(height: 14),
+            _navigationPanel(),
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -874,6 +922,76 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       ),
     ],
   );
+
+  Widget _navigationPanel() {
+    final slot = _modelSlots[_selectedSlot];
+    return Container(
+      key: const ValueKey('navigation-query-pool'),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xff0a1711),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xff1e4733)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'NAVIGATION QUERY POOL · ${slot.name.isEmpty ? 'Selected model' : slot.name}',
+                  style: const TextStyle(
+                    color: Color(0xff64dc98),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              FilledButton.tonalIcon(
+                key: const ValueKey('save-navigation'),
+                onPressed: _saveNavigation,
+                icon: const Icon(Icons.explore_outlined),
+                label: const Text('Save navigation'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Ten ordered queries · advance after one hour without candidate growth',
+            style: TextStyle(color: Color(0xff83a891), fontSize: 11),
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 840 ? 2 : 1;
+              final width =
+                  (constraints.maxWidth - (columns - 1) * 9) / columns;
+              return Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  for (var index = 0; index < 10; index++)
+                    SizedBox(
+                      width: width,
+                      child: TextFormField(
+                        key: ValueKey('navigation-query-$index-${slot.name}'),
+                        initialValue: slot.navigationQueries[index],
+                        decoration: InputDecoration(
+                          labelText: 'Query ${index + 1}',
+                        ),
+                        onChanged: (value) =>
+                            slot.navigationQueries[index] = value,
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _modelSlot(int index, ModelSlotDraft slot) => Container(
     key: ValueKey('model-slot-$index'),
@@ -1111,12 +1229,19 @@ class ModelSlotDraft {
     this.connector = '',
     this.batchTarget = 2000,
     this.uploadTarget = 100,
-  });
+    List<String>? navigationQueries,
+  }) : navigationQueries = List<String>.generate(
+         10,
+         (index) => index < (navigationQueries?.length ?? 0)
+             ? navigationQueries![index]
+             : '',
+       );
 
   String name;
   String connector;
   int batchTarget;
   int uploadTarget;
+  final List<String> navigationQueries;
 
   Map<String, dynamic> toJson(int slot) => {
     'slot': slot,
@@ -1124,6 +1249,7 @@ class ModelSlotDraft {
     'connector': connector.trim(),
     'batchTarget': batchTarget,
     'uploadTarget': uploadTarget,
+    'navigationQueries': navigationQueries,
   };
 }
 

@@ -226,6 +226,9 @@ class SweeperController:
         lane_id = str(definition.get("id", definition.get("name", "lane")))
         batch_number = _count(state.get("currentBatch")) or _batch_number(current_root)
         success_history = self._source_success_history(lane_id)
+        navigation = _read_json(
+            self._path(str(definition.get("navigationPath", "missing-navigation.json")))
+        )
         checkpoint = _read_json(Path(current_root) / "checkpoint.json") if current_root else {}
         progress = _read_json(Path(current_root) / "staging_upload_progress.json") if current_root else {}
         accepted = _count(
@@ -337,6 +340,8 @@ class SweeperController:
             "uploadTarget": int(progress.get("total") or target),
             "completionState": "staged" if staged_complete else "",
             "batchNumber": batch_number,
+            "navigationQueries": navigation.get("queries", []),
+            "navigationStatus": str(navigation.get("status", "")),
             "checkpointUpdatedAt": state_updated,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
@@ -371,6 +376,7 @@ class SweeperController:
             "modeDetail": mode_detail,
             "batchNumber": batch_number,
             "successHistory": success_history,
+            "navigationQueries": navigation.get("queries", []),
             "progressEvidence": {
                 "stage": stage,
                 "accepted": accepted,
@@ -389,6 +395,41 @@ class SweeperController:
                 "supplemental": supplemental_progress,
             },
         }
+
+    def navigate(self, lane_id: str, queries: Any) -> Dict[str, Any]:
+        """Save a bounded source-navigation pool without executing shell text."""
+        lane = next((item for item in self.config.get("lanes", [])
+                     if isinstance(item, dict) and str(item.get("id")) == lane_id), None)
+        if not isinstance(lane, dict) or not lane.get("navigationPath"):
+            raise ValueError(f"navigation is disabled for lane: {lane_id}")
+        if not isinstance(queries, list):
+            raise ValueError("navigation queries must be a list")
+        cleaned: List[str] = []
+        for raw in queries[:10]:
+            query = " ".join(str(raw).strip().split())
+            if not query:
+                continue
+            if not 2 <= len(query) <= 120 or not re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9 .,'&()\-/]*", query
+            ):
+                raise ValueError("navigation queries must be 2-120 plain-text characters")
+            if query.casefold() not in {value.casefold() for value in cleaned}:
+                cleaned.append(query)
+        if not cleaned:
+            raise ValueError("at least one navigation query is required")
+        destination = self._path(str(lane["navigationPath"]))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schemaVersion": 1,
+            "lane": lane_id,
+            "queries": cleaned,
+            "status": "pending-safe-discovery-window",
+            "requestedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        atomic_temporary = destination.with_suffix(destination.suffix + ".tmp")
+        atomic_temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        atomic_temporary.replace(destination)
+        return {"accepted": True, **payload}
 
     def _publisher_lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         state_path = self._path(str(definition.get("statePath", "missing.json")))
@@ -663,6 +704,11 @@ class SweeperController:
                     "connector": connector,
                     "batchTarget": max(1, min(100000, int(raw.get("batchTarget", 2000)))),
                     "uploadTarget": max(1, min(100000, int(raw.get("uploadTarget", 100)))),
+                    "navigationQueries": [
+                        str(value).strip()[:120]
+                        for value in raw.get("navigationQueries", [])[:10]
+                        if str(value).strip()
+                    ] if isinstance(raw.get("navigationQueries", []), list) else [],
                 })
         allowed = {
             "sourceSlots": slot_count,

@@ -8,6 +8,29 @@ from controller import SweeperController
 
 
 class ControllerTests(unittest.TestCase):
+    def test_navigation_pool_is_bounded_and_source_specific(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "loc", "statePath": "state.json",
+                           "navigationPath": "navigation.json"}],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            result = controller.navigate("loc", [
+                "Sermons, English", "Christian stories", "Christian stories",
+            ])
+            self.assertEqual(
+                ["Sermons, English", "Christian stories"], result["queries"]
+            )
+            saved = json.loads((root / "navigation.json").read_text(encoding="utf-8"))
+            self.assertEqual("pending-safe-discovery-window", saved["status"])
+            with self.assertRaisesRegex(ValueError, "disabled"):
+                controller.navigate("other", ["Christian books"])
+            with self.assertRaisesRegex(ValueError, "plain-text"):
+                controller.navigate("loc", ["$(unsafe)"])
+
     def test_discovery_checkpoint_growth_resets_progress_clock_without_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

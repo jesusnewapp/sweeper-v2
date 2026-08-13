@@ -1,5 +1,18 @@
 # Architecture
 
+## Navigation and staged-pool continuation
+
+Source adapters may expose up to ten ordered navigation queries. A query
+advances only when its configured pages are exhausted or its candidate count
+has not grown for one hour. Accepted artifacts and source checkpoints survive
+query changes.
+
+Production consumers keep exact staged units separate and use one serialized
+writer. When scheduling a backlog, the largest exact units run first and the
+cycle records a minimum target of 50% of the eligible staged-book pool present
+at cycle start. This target changes scheduling only; it never bypasses hashes,
+duplicate screening, publication receipts, or live verification.
+
 Web Sweeper separates four responsibilities:
 
 1. **Manifests** declare stable source identities and download locations.

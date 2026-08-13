@@ -8,6 +8,7 @@
       "id": "source-one",
       "name": "Source lane one",
       "statePath": "work/source-one/state.json",
+      "navigationPath": "work/source-one/navigation-query.json",
       "target": 2000,
       "watchAfterSeconds": 900,
       "redAfterSeconds": 3600,
