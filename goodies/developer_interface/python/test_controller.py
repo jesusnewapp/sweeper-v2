@@ -181,12 +181,13 @@ class ControllerTests(unittest.TestCase):
             )
             lane = SweeperController(config_path).status()["lanes"][0]
             self.assertEqual(lane["stage"], "storage-upload")
-            self.assertEqual((lane["accepted"], lane["target"]), (400, 870))
+            self.assertEqual((lane["accepted"], lane["target"]), (870, 2000))
             self.assertEqual(lane["uploaded"], 400)
             self.assertEqual(lane["health"], "healthy")
             self.assertIn("870/2000 accepted", lane["detail"])
             self.assertEqual(lane["mode"], "uploading")
             self.assertEqual(lane["modeDetail"]["uploaded"], 400)
+            self.assertEqual(lane["modeDetail"]["uploadTarget"], 870)
 
     def test_completed_staging_unit_exposes_persistent_staged_state(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -357,11 +357,11 @@ class SweeperController:
                 "gateProgressTarget": discovery_target,
             })
         if progress_active:
-            display_accepted = uploaded
-            display_target = int(progress.get("total") or accepted or target)
-            detail = (
-                f"{accepted}/{target} accepted · exact staging upload"
-            )
+            # Staging is already a defined lane phase. A partial survivor
+            # upload must never masquerade as a new acquisition batch target.
+            display_accepted = accepted
+            display_target = target
+            detail = f"{accepted}/{target} accepted · staging"
         return {
             "id": lane_id,
             "name": definition.get("name", "Unnamed lane"),
