@@ -1242,14 +1242,13 @@ class ModelCard extends StatelessWidget {
     if (model.health == Health.failed || unchangedFor.inSeconds >= 300) {
       return const Color(0xffff4e5b);
     }
+    if (unchangedFor.inSeconds < 60) {
+      return const Color(0xff35d07f);
+    }
     const yellow = Color(0xfff5d142);
     const orange = Color(0xffff8a3d);
-    const red = Color(0xffff4e5b);
-    final seconds = unchangedFor.inSeconds.clamp(0, 300);
-    if (seconds <= 150) {
-      return Color.lerp(yellow, orange, seconds / 150) ?? yellow;
-    }
-    return Color.lerp(orange, red, (seconds - 150) / 150) ?? orange;
+    if (unchangedFor.inSeconds < 180) return yellow;
+    return orange;
   }
 
   String _modeButtonLabel(Duration unchangedFor) {
