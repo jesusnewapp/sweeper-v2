@@ -505,6 +505,35 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                     },
                   ),
                   const SizedBox(height: 18),
+                  _sectionTitle(
+                    'Success history',
+                    'Completed batches, staged totals, and verified live results',
+                  ),
+                  const SizedBox(height: 10),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = constraints.maxWidth >= 1050
+                          ? 3
+                          : constraints.maxWidth >= 660
+                          ? 2
+                          : 1;
+                      final width =
+                          (constraints.maxWidth - (columns - 1) * 12) / columns;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: _models
+                            .map(
+                              (model) => SizedBox(
+                                width: width,
+                                child: _successHistoryCard(model),
+                              ),
+                            )
+                            .toList(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
                   _controls(),
                   const SizedBox(height: 18),
                   _activityLog(),
@@ -512,6 +541,58 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _successHistoryCard(ModelView model) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              model.name,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 9),
+            if (model.successHistory.isEmpty)
+              const Text(
+                'No completed batch receipt yet',
+                style: TextStyle(color: Color(0xff83a891), fontSize: 12),
+              )
+            else
+              for (final item in model.successHistory.take(5))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        size: 15,
+                        color: Color(0xff64dc98),
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${item.batchNumber}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const Spacer(),
+                      Text(
+                        item.liveVerified > 0
+                            ? '${item.liveVerified} live'
+                            : '${item.staged} staged',
+                        style: const TextStyle(
+                          color: Color(0xff83cda4),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
         ),
       ),
     );
@@ -1074,6 +1155,8 @@ class ModelView {
     this.modeDetail = const {},
     this.progressSince,
     this.stageSince,
+    this.batchNumber = 0,
+    this.successHistory = const [],
   });
   final String id;
   final String name;
@@ -1087,6 +1170,8 @@ class ModelView {
   final Map<String, dynamic> modeDetail;
   final DateTime? progressSince;
   final DateTime? stageSince;
+  final int batchNumber;
+  final List<SuccessRecord> successHistory;
 
   double get progress =>
       target == 0 ? 0.0 : (accepted / target).clamp(0.0, 1.0);
@@ -1117,8 +1202,39 @@ class ModelView {
           : const {},
       progressSince: DateTime.tryParse(json['progressSince'] as String? ?? ''),
       stageSince: DateTime.tryParse(json['stageSince'] as String? ?? ''),
+      batchNumber: (json['batchNumber'] as num?)?.toInt() ?? 0,
+      successHistory: (json['successHistory'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (value) => SuccessRecord.fromJson(Map<String, dynamic>.from(value)),
+          )
+          .toList(),
     );
   }
+}
+
+class SuccessRecord {
+  const SuccessRecord({
+    required this.batchNumber,
+    required this.staged,
+    required this.published,
+    required this.liveVerified,
+    required this.status,
+  });
+
+  final int batchNumber;
+  final int staged;
+  final int published;
+  final int liveVerified;
+  final String status;
+
+  factory SuccessRecord.fromJson(Map<String, dynamic> json) => SuccessRecord(
+    batchNumber: (json['batchNumber'] as num?)?.toInt() ?? 0,
+    staged: (json['staged'] as num?)?.toInt() ?? 0,
+    published: (json['published'] as num?)?.toInt() ?? 0,
+    liveVerified: (json['liveVerified'] as num?)?.toInt() ?? 0,
+    status: json['status'] as String? ?? '',
+  );
 }
 
 class ProgressObservation {
@@ -1324,6 +1440,7 @@ class ModelCard extends StatelessWidget {
     'watcherCheckedAt' => 'Watcher checked',
     'journalBytes' => 'Journal bytes',
     'currentRoot' => 'Current root',
+    'batchNumber' => 'Current batch',
     'signalState' => 'Progress signal',
     'unchangedFor' => 'Unchanged for',
     _ => key,
@@ -1476,6 +1593,27 @@ class ModelCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (model.batchNumber > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    key: ValueKey('batch-number-${model.id}'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff173426),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${model.batchNumber}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 6),
                 Container(
                   key: ValueKey('gate-signal-${model.id}'),

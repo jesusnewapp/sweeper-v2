@@ -233,6 +233,61 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(675, lane["modeDetail"]["gateProgressCurrent"])
             self.assertEqual(853, lane["modeDetail"]["gateProgressTarget"])
 
+    def test_publisher_does_not_regress_when_log_is_newer_than_progress_json(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit"
+            unit.mkdir()
+            (unit / "catalog.json").write_text(
+                json.dumps({"books": [{"id": "one"}]}), encoding="utf-8"
+            )
+            (unit / "publication_progress.json").write_text(
+                json.dumps({
+                    "phase": "live-verification",
+                    "prepared": 1,
+                    "uploaded": 1,
+                    "published": 1,
+                    "liveVerified": 0,
+                    "verificationTarget": 1,
+                }),
+                encoding="utf-8",
+            )
+            (unit / "promotion.log").write_text(
+                "Uploaded 1/1\n"
+                "Published 1 new or changed Codex records.\n"
+                "Verified 1/1 live Codex books.\n",
+                encoding="utf-8",
+            )
+            (root / "publisher.json").write_text(
+                json.dumps({
+                    "listenerActive": True,
+                    "currentUnit": str(unit),
+                    "currentAction": "publish-and-five-gate-verify",
+                    "checkedAt": datetime.now(timezone.utc).isoformat(),
+                    "queue": {"pendingUnits": 1},
+                }),
+                encoding="utf-8",
+            )
+            config_path = root / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "projectRoot": str(root),
+                    "lanes": [{
+                        "id": "publisher",
+                        "kind": "publisher",
+                        "statePath": "publisher.json",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual((1, 1), (lane["accepted"], lane["target"]))
+            self.assertEqual(1, lane["published"])
+            self.assertEqual(1, lane["liveVerified"])
+            self.assertEqual("live-verification", lane["stage"])
+            self.assertEqual(1, lane["modeDetail"]["gateProgressCurrent"])
+
     def test_publisher_distinguishes_ready_from_parked_queue_units(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

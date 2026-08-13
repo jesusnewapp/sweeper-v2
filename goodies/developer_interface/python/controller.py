@@ -51,6 +51,11 @@ def _count(value: Any) -> int:
         return 0
 
 
+def _batch_number(root: Any) -> int:
+    match = re.search(r"(?:batch|unit)_(\d+)", str(root or ""))
+    return int(match.group(1)) if match else 0
+
+
 def _progress_key(value: Dict[str, Any]) -> str:
     """Bind the inactivity clock to every durable progress signal.
 
@@ -99,7 +104,35 @@ def _publication_progress(root: Path) -> Dict[str, Any]:
         match = verified[-1]
         value.update({"phase": "live-verification", "liveVerified": int(match.group(1)),
                       "verificationTarget": int(match.group(2))})
-    return {**value, **progress}
+    # The writer updates its log and atomic progress JSON independently. During
+    # that very small hand-off window the log can contain newer exact evidence
+    # (for example ``Verified 1/1``) while the JSON still says zero. A normal
+    # dictionary merge allowed that stale zero to overwrite the newer counter,
+    # making the UI briefly regress to 0/1 after successful verification.
+    merged = {**value, **progress}
+    monotonic_counts = (
+        "prepared", "duplicateRemoved", "publishable", "uploaded",
+        "uploadTarget", "published", "liveVerified", "verificationTarget",
+    )
+    for name in monotonic_counts:
+        if name in value or name in progress:
+            merged[name] = max(_count(value.get(name)), _count(progress.get(name)))
+
+    phase_order = {
+        "fresh-live-delta": 0,
+        "room-allocation": 1,
+        "storage-upload": 2,
+        "publication-complete": 3,
+        "live-verification": 4,
+        "complete": 5,
+    }
+    log_phase = str(value.get("phase", ""))
+    json_phase = str(progress.get("phase", ""))
+    merged["phase"] = max(
+        (log_phase, json_phase),
+        key=lambda phase: phase_order.get(phase, -1),
+    )
+    return merged
 
 
 class SweeperController:
@@ -118,6 +151,33 @@ class SweeperController:
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()
         return path if path.is_absolute() else self.project_root / path
+
+    def _source_success_history(self, lane_id: str) -> List[Dict[str, Any]]:
+        prefix = {
+            "open-library": "open_library_",
+            "library-of-congress": "library_of_congress_",
+        }.get(lane_id)
+        if not prefix:
+            return []
+        imports = self.project_root / "work/judah_library/imports"
+        rows: List[Dict[str, Any]] = []
+        for root in imports.glob(f"{prefix}*"):
+            verification = _read_json(root / "staging_verification.json")
+            verified = _count(verification.get("verified"))
+            if verified < 1 or verification.get("productionMutated") is not False:
+                continue
+            promotion = _read_json(root / "promotion_validation.json")
+            rows.append({
+                "batchNumber": _batch_number(root.name),
+                "root": str(root),
+                "status": "live-verified" if _count(promotion.get("liveVerified")) > 0 else "staged",
+                "staged": verified,
+                "published": _count(promotion.get("published")),
+                "liveVerified": _count(promotion.get("liveVerified")),
+                "completedAt": promotion.get("completedAt") or verification.get("verifiedAt") or "",
+            })
+        rows.sort(key=lambda row: (str(row["completedAt"]), int(row["batchNumber"])), reverse=True)
+        return rows[:8]
 
     def _sample_progress_file(self, path: Path, metadata: os.stat_result) -> Dict[str, Any]:
         """Sample potentially large discovery journals at most every 30 seconds."""
@@ -163,6 +223,9 @@ class SweeperController:
         state_path = self._path(str(definition.get("statePath", "missing.json")))
         state = _read_json(state_path)
         current_root = _first(state, ("currentRoot", "root"), "")
+        lane_id = str(definition.get("id", definition.get("name", "lane")))
+        batch_number = _count(state.get("currentBatch")) or _batch_number(current_root)
+        success_history = self._source_success_history(lane_id)
         checkpoint = _read_json(Path(current_root) / "checkpoint.json") if current_root else {}
         progress = _read_json(Path(current_root) / "staging_upload_progress.json") if current_root else {}
         accepted = _count(
@@ -273,6 +336,7 @@ class SweeperController:
             "uploaded": uploaded,
             "uploadTarget": int(progress.get("total") or target),
             "completionState": "staged" if staged_complete else "",
+            "batchNumber": batch_number,
             "checkpointUpdatedAt": state_updated,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
@@ -293,7 +357,7 @@ class SweeperController:
                 f"{accepted}/{target} accepted · exact staging upload"
             )
         return {
-            "id": definition.get("id", definition.get("name", "lane")),
+            "id": lane_id,
             "name": definition.get("name", "Unnamed lane"),
             "stage": stage,
             "accepted": display_accepted,
@@ -305,6 +369,8 @@ class SweeperController:
             "currentRoot": current_root,
             "mode": mode,
             "modeDetail": mode_detail,
+            "batchNumber": batch_number,
+            "successHistory": success_history,
             "progressEvidence": {
                 "stage": stage,
                 "accepted": accepted,
@@ -331,6 +397,16 @@ class SweeperController:
         latest = advances[-1] if isinstance(advances, list) and advances else {}
         current_root = str(state.get("currentUnit") or latest.get("root") or "")
         current = bool(state.get("currentUnit"))
+        publisher_history = [{
+            "batchNumber": _batch_number(row.get("root")),
+            "root": str(row.get("root", "")),
+            "status": "live-verified",
+            "staged": 0,
+            "published": _count(row.get("published")),
+            "liveVerified": _count(row.get("liveVerified")),
+            "completedAt": row.get("completedAt", ""),
+        } for row in reversed(advances[-8:])] if isinstance(advances, list) else []
+        batch_number = _batch_number(current_root)
         publication: Dict[str, Any] = {}
         promotion: Dict[str, Any] = {}
         if current:
@@ -475,6 +551,8 @@ class SweeperController:
             "currentRoot": current_root,
             "mode": mode,
             "modeDetail": mode_detail,
+            "batchNumber": batch_number,
+            "successHistory": publisher_history,
             "progressSince": latest.get("completedAt") if not current else None,
             "codexLive": _count(
                 _read_json(Path(current_root) / "promotion_validation.json").get(
