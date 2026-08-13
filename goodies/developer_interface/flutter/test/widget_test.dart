@@ -372,7 +372,15 @@ void main() {
       expect(find.byKey(ValueKey('model-slot-$slot')), findsOneWidget);
       expect(find.byKey(ValueKey('model-name-$slot')), findsOneWidget);
       expect(find.byKey(ValueKey('model-connector-$slot')), findsOneWidget);
+      expect(find.byKey(ValueKey('navigation-pool-$slot')), findsOneWidget);
     }
+    await tester.ensureVisible(find.byKey(const ValueKey('navigation-pool-1')));
+    await tester.tap(find.byKey(const ValueKey('navigation-pool-1')));
+    await tester.pumpAndSettle();
+    for (var query = 0; query < 10; query++) {
+      expect(find.byKey(ValueKey('navigation-query-1-$query')), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey('save-navigation-1')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

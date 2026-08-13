@@ -408,11 +408,11 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     }
   }
 
-  Future<void> _saveNavigation() async {
-    final slot = _modelSlots[_selectedSlot];
+  Future<void> _saveNavigation(int slotIndex) async {
+    final slot = _modelSlots[slotIndex];
     final selected = _models.firstWhere(
       (model) => model.name == slot.name.trim(),
-      orElse: () => _models[_selectedSlot.clamp(0, _models.length - 1)],
+      orElse: () => _models[slotIndex.clamp(0, _models.length - 1)],
     );
     try {
       final base = _endpoint.endsWith('/')
@@ -764,8 +764,6 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             const SizedBox(height: 14),
             _modelConfiguration(),
             const SizedBox(height: 14),
-            _navigationPanel(),
-            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -923,76 +921,6 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     ],
   );
 
-  Widget _navigationPanel() {
-    final slot = _modelSlots[_selectedSlot];
-    return Container(
-      key: const ValueKey('navigation-query-pool'),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: const Color(0xff0a1711),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xff1e4733)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'NAVIGATION QUERY POOL · ${slot.name.isEmpty ? 'Selected model' : slot.name}',
-                  style: const TextStyle(
-                    color: Color(0xff64dc98),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              FilledButton.tonalIcon(
-                key: const ValueKey('save-navigation'),
-                onPressed: _saveNavigation,
-                icon: const Icon(Icons.explore_outlined),
-                label: const Text('Save navigation'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Ten ordered queries · advance after one hour without candidate growth',
-            style: TextStyle(color: Color(0xff83a891), fontSize: 11),
-          ),
-          const SizedBox(height: 10),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 840 ? 2 : 1;
-              final width =
-                  (constraints.maxWidth - (columns - 1) * 9) / columns;
-              return Wrap(
-                spacing: 9,
-                runSpacing: 9,
-                children: [
-                  for (var index = 0; index < 10; index++)
-                    SizedBox(
-                      width: width,
-                      child: TextFormField(
-                        key: ValueKey('navigation-query-$index-${slot.name}'),
-                        initialValue: slot.navigationQueries[index],
-                        decoration: InputDecoration(
-                          labelText: 'Query ${index + 1}',
-                        ),
-                        onChanged: (value) =>
-                            slot.navigationQueries[index] = value,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _modelSlot(int index, ModelSlotDraft slot) => Container(
     key: ValueKey('model-slot-$index'),
     padding: const EdgeInsets.all(12),
@@ -1060,6 +988,43 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                 slot.uploadTarget,
                 (value) => slot.uploadTarget = value.clamp(1, 100000),
                 fieldKey: 'model-upload-$index',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ExpansionTile(
+          key: ValueKey('navigation-pool-$index'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 4),
+          title: const Text(
+            'Navigation queries',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+          subtitle: const Text(
+            '10 source-specific slots · rotate after 1h without candidate growth',
+            style: TextStyle(color: Color(0xff83a891), fontSize: 10),
+          ),
+          children: [
+            for (var queryIndex = 0; queryIndex < 10; queryIndex++) ...[
+              TextFormField(
+                key: ValueKey('navigation-query-$index-$queryIndex'),
+                initialValue: slot.navigationQueries[queryIndex],
+                decoration: InputDecoration(
+                  labelText: 'Query ${queryIndex + 1}',
+                ),
+                onChanged: (value) =>
+                    slot.navigationQueries[queryIndex] = value,
+              ),
+              const SizedBox(height: 7),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                key: ValueKey('save-navigation-$index'),
+                onPressed: () => _saveNavigation(index),
+                icon: const Icon(Icons.explore_outlined),
+                label: const Text('Save this source'),
               ),
             ),
           ],
