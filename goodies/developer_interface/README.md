@@ -9,6 +9,7 @@ It includes:
 - an authenticated Python controller bridge for desktop and mobile clients;
 - configurable readable-text colors;
 - green, yellow, orange, and red lane states;
+- an elapsed timer after any displayed progress percentage remains unchanged for 10 seconds;
 - a four-pad waiting game with a persistent high score and one-time round-20 message;
 - one serialized production-writer invariant.
 
@@ -38,6 +39,15 @@ Local desktop use:
 export WEB_SWEEPER_TOKEN='replace-with-a-long-random-token'
 python3 python/server.py --config /path/to/controller.json
 ```
+
+For the simplest same-Mac connection, `--local-no-auth` accepts only loopback
+clients and cannot be combined with a network-facing host. Remote and mobile
+connections still require HTTPS and a token.
+
+For a local service, the token may instead be kept in a mode-`0600` file and
+passed with `--token-file`. A configured `metricsPath` supplies live global
+counts such as `codexLive` and `confirmedStaged` without embedding project
+specific storage credentials in the UI.
 
 Mobile access must use HTTPS:
 

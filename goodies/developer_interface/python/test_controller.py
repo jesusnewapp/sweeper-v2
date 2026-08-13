@@ -37,6 +37,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(status["codexLive"], 42)
             self.assertEqual(status["lanes"][0]["accepted"], 321)
             self.assertEqual(status["lanes"][0]["health"], "healthy")
+            self.assertIn("progressSince", status["lanes"][0])
             self.assertEqual(status["productionWriterLimit"], 1)
 
     def test_unconfigured_actions_are_disabled(self):
@@ -46,6 +47,25 @@ class ControllerTests(unittest.TestCase):
             config_path.write_text(json.dumps({"projectRoot": str(root), "actions": {}}), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "action is disabled"):
                 SweeperController(config_path).action("reset", "source")
+
+    def test_model_slot_preferences_are_bounded_and_persisted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({"projectRoot": str(root)}), encoding="utf-8")
+            controller = SweeperController(config_path)
+            controller.save_preferences({
+                "sourceSlots": 4,
+                "models": [
+                    {"name": "Open Library", "connector": "https://openlibrary.org",
+                     "batchTarget": 2000, "uploadTarget": 100},
+                    {"name": "", "connector": "", "batchTarget": 2000, "uploadTarget": 100},
+                ],
+            })
+            saved = json.loads((root / "controller.preferences.json").read_text())
+            self.assertEqual(saved["sourceSlots"], 4)
+            self.assertEqual(saved["models"][0]["name"], "Open Library")
+            self.assertEqual(saved["models"][1]["slot"], 2)
 
 
 if __name__ == "__main__":

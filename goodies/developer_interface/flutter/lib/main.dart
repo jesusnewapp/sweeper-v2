@@ -102,55 +102,156 @@ class DeveloperDashboard extends StatefulWidget {
 }
 
 class _DeveloperDashboardState extends State<DeveloperDashboard> {
-  int _sourceSlots = 2;
-  int _batchTarget = 2000;
-  int _uploadTarget = 100;
-  String _selectedModel = 'Open Library';
+  int _sourceSlots = 4;
+  int _selectedSlot = 0;
   bool _tertiary = true;
   bool _bridge = false;
   bool _connecting = false;
-  int _codexLive = 26549;
+  bool _hasLiveData = false;
+  int _codexLive = 0;
+  int _confirmedStaged = 0;
   String _endpoint = 'http://127.0.0.1:8790';
   String _token = '';
   String _connectionMessage = 'Local controller not connected';
+  Timer? _progressTimer;
+  Timer? _statusTimer;
+  DateTime _clock = DateTime.now();
+  final Map<String, ProgressObservation> _progressObservations = {};
+  final Map<String, StageObservation> _stageObservations = {};
+  final Set<String> _loggedStageObservations = {};
+  final List<ActivityEntry> _activity = [];
+  final List<ModelSlotDraft> _modelSlots = List.generate(10, (index) {
+    if (index == 0) {
+      return ModelSlotDraft(
+        name: 'Open Library',
+        connector: 'https://openlibrary.org/developers/api',
+      );
+    }
+    if (index == 1) {
+      return ModelSlotDraft(
+        name: 'Library of Congress',
+        connector: 'https://www.loc.gov/apis/',
+      );
+    }
+    return ModelSlotDraft();
+  });
 
   List<ModelView> _models = const [
     ModelView(
       id: 'open-library',
       name: 'Open Library',
-      stage: 'Acquiring',
-      accepted: 1462,
+      stage: 'Awaiting controller',
+      accepted: 0,
       target: 2000,
       uploaded: 0,
-      health: Health.healthy,
-      detail: 'Checkpoint advancing · two workers',
+      health: Health.watch,
+      detail: 'Connect to read live status',
     ),
     ModelView(
       id: 'library-of-congress',
       name: 'Library of Congress',
-      stage: 'Staging upload',
-      accepted: 1988,
+      stage: 'Awaiting controller',
+      accepted: 0,
       target: 2000,
-      uploaded: 1725,
+      uploaded: 0,
       health: Health.watch,
-      detail: 'Receipt-bound upload in progress',
+      detail: 'Connect to read live status',
     ),
     ModelView(
       id: 'publisher',
       name: 'Stage-to-live publisher',
-      stage: 'Live verification',
-      accepted: 1486,
-      target: 1486,
-      uploaded: 1486,
-      health: Health.healthy,
-      detail: 'Single serialized writer · 1 GiB gate',
+      stage: 'Awaiting controller',
+      accepted: 0,
+      target: 100,
+      uploaded: 0,
+      health: Health.watch,
+      detail: 'Connect to read live publication receipts',
     ),
   ];
 
   @override
   void initState() {
     super.initState();
+    _syncProgressObservations(_models);
+    _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) _tickObservations();
+    });
+    _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_hasLiveData && !_connecting) _connect(quiet: true);
+    });
     _restoreConnection();
+  }
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    _statusTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncProgressObservations(List<ModelView> models) {
+    final now = DateTime.now();
+    final activeIds = models.map((model) => model.id).toSet();
+    _progressObservations.removeWhere((id, _) => !activeIds.contains(id));
+    _stageObservations.removeWhere((id, _) => !activeIds.contains(id));
+    for (final model in models) {
+      final key = model.progressTenthsPercent;
+      final supplied = model.progressSince;
+      final current = _progressObservations[model.id];
+      if (current == null || current.progressTenthsPercent != key) {
+        _progressObservations[model.id] = ProgressObservation(
+          progressTenthsPercent: key,
+          since: supplied ?? now,
+        );
+      } else if (supplied != null && supplied.isBefore(current.since)) {
+        _progressObservations[model.id] = ProgressObservation(
+          progressTenthsPercent: key,
+          since: supplied,
+        );
+      }
+      final stageCurrent = _stageObservations[model.id];
+      final stageSupplied = model.stageSince;
+      if (stageCurrent == null || stageCurrent.stage != model.stage) {
+        _stageObservations[model.id] = StageObservation(
+          stage: model.stage,
+          since: stageSupplied ?? now,
+        );
+      } else if (stageSupplied != null &&
+          stageSupplied.isBefore(stageCurrent.since)) {
+        _stageObservations[model.id] = StageObservation(
+          stage: model.stage,
+          since: stageSupplied,
+        );
+      }
+    }
+  }
+
+  void _tickObservations() {
+    final now = DateTime.now();
+    if (_hasLiveData) {
+      for (final model in _models) {
+        final observation = _stageObservations[model.id];
+        if (observation == null ||
+            now.difference(observation.since).inSeconds < 10) {
+          continue;
+        }
+        final key = '${model.id}|${observation.stage}|${observation.since}';
+        if (_loggedStageObservations.add(key)) {
+          _activity.insert(
+            0,
+            ActivityEntry(
+              at: now,
+              text: '${model.name} remained in ${model.stage} for 10 seconds',
+              color: model.health == Health.healthy
+                  ? const Color(0xff35d07f)
+                  : const Color(0xfff5d142),
+            ),
+          );
+          if (_activity.length > 20) _activity.removeLast();
+        }
+      }
+    }
+    setState(() => _clock = now);
   }
 
   Future<void> _restoreConnection() async {
@@ -160,12 +261,14 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       _endpoint = preferences.getString('controller_endpoint') ?? _endpoint;
       _token = preferences.getString('controller_token') ?? '';
     });
+    await _connect(quiet: true);
   }
 
-  Future<void> _connect() async {
+  Future<void> _connect({bool quiet = false}) async {
+    if (_connecting) return;
     setState(() {
       _connecting = true;
-      _connectionMessage = 'Connecting…';
+      if (!quiet) _connectionMessage = 'Connecting…';
     });
     try {
       final base = _endpoint.endsWith('/')
@@ -185,18 +288,23 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       await preferences.setString('controller_endpoint', _endpoint);
       await preferences.setString('controller_token', _token);
       final lanes = payload['lanes'];
+      final parsedModels = lanes is List
+          ? lanes
+                .whereType<Map>()
+                .map(
+                  (raw) => ModelView.fromJson(Map<String, dynamic>.from(raw)),
+                )
+                .toList()
+          : null;
       if (!mounted) return;
       setState(() {
         _codexLive = (payload['codexLive'] as num?)?.toInt() ?? _codexLive;
-        if (lanes is List) {
-          _models = lanes
-              .whereType<Map>()
-              .map((raw) => ModelView.fromJson(Map<String, dynamic>.from(raw)))
-              .toList();
-          if (_models.isNotEmpty &&
-              !_models.any((model) => model.name == _selectedModel)) {
-            _selectedModel = _models.first.name;
-          }
+        _confirmedStaged =
+            (payload['confirmedStaged'] as num?)?.toInt() ?? _confirmedStaged;
+        if (parsedModels != null) {
+          _syncProgressObservations(parsedModels);
+          _models = parsedModels;
+          _hasLiveData = true;
         }
         _connectionMessage = 'Connected · live controller data';
       });
@@ -213,8 +321,9 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       _notice('No configured lane is available');
       return;
     }
+    final selectedName = _modelSlots[_selectedSlot].name.trim();
     final selected = _models.firstWhere(
-      (model) => model.name == _selectedModel,
+      (model) => model.name == selectedName,
       orElse: () => _models.first,
     );
     try {
@@ -243,6 +352,39 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
     } catch (error) {
       if (mounted) _notice('Request failed · $error');
+    }
+  }
+
+  Future<void> _saveConfiguration() async {
+    try {
+      final base = _endpoint.endsWith('/')
+          ? _endpoint.substring(0, _endpoint.length - 1)
+          : _endpoint;
+      final response = await http
+          .post(
+            Uri.parse('$base/api/preferences'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+            },
+            body: jsonEncode({
+              'sourceSlots': _sourceSlots,
+              'tertiaryEnabled': _tertiary,
+              'models': [
+                for (var index = 0; index < _sourceSlots; index++)
+                  _modelSlots[index].toJson(index + 1),
+              ],
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        _notice('Model slots saved');
+      } else {
+        _notice('Configuration not saved · controller ${response.statusCode}');
+      }
+    } catch (error) {
+      if (mounted) _notice('Configuration not saved · $error');
     }
   }
 
@@ -301,7 +443,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         actions: [
           IconButton(
             tooltip: 'Refresh status',
-            onPressed: () => _notice('Status refreshed'),
+            onPressed: _connecting ? null : _connect,
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: 6),
@@ -339,7 +481,13 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                             .map(
                               (model) => SizedBox(
                                 width: width,
-                                child: ModelCard(model: model),
+                                child: ModelCard(
+                                  model: model,
+                                  observation: _progressObservations[model.id],
+                                  stageObservation:
+                                      _stageObservations[model.id],
+                                  now: _clock,
+                                ),
                               ),
                             )
                             .toList(),
@@ -360,6 +508,13 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   }
 
   Widget _topArea() {
+    final currentUploaded = _models.fold<int>(
+      0,
+      (total, model) => total + model.uploaded,
+    );
+    final healthy = _models
+        .where((model) => model.health == Health.healthy)
+        .length;
     return LayoutBuilder(
       builder: (context, constraints) {
         final summary = Column(
@@ -379,41 +534,43 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
               children: [
                 Metric(
                   label: 'Codex Live',
-                  value: _codexLive.toString(),
+                  value: _hasLiveData ? _codexLive.toString() : '—',
                   icon: Icons.public_rounded,
                 ),
-                const Metric(
+                Metric(
                   label: 'Confirmed staged',
-                  value: '31,882',
+                  value: _hasLiveData ? _confirmedStaged.toString() : '—',
                   icon: Icons.inventory_2_outlined,
                 ),
                 Metric(
-                  label: 'Uploading now',
-                  value: '1,725',
+                  label: 'Current uploaded',
+                  value: _hasLiveData ? currentUploaded.toString() : '—',
                   icon: Icons.cloud_upload_outlined,
                 ),
                 Metric(
                   label: 'Healthy lanes',
-                  value: '3 / 3',
+                  value: _hasLiveData ? '$healthy / ${_models.length}' : '—',
                   icon: Icons.health_and_safety_outlined,
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Card(
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(14),
+                padding: const EdgeInsets.all(14),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.verified_user_outlined,
                       color: Color(0xff64dc98),
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Production remains protected by one serialized writer, exact duplicate screening, and live verification.',
+                        _hasLiveData
+                            ? 'Production remains protected by one serialized writer, exact duplicate screening, and live verification.'
+                            : 'Preview mode · connect the local controller to display live counts and receipts.',
                         softWrap: true,
                       ),
                     ),
@@ -468,48 +625,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             const SizedBox(height: 14),
             _connectionPanel(),
             const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final fieldWidth = constraints.maxWidth >= 900
-                    ? (constraints.maxWidth - 36) / 4
-                    : constraints.maxWidth >= 540
-                    ? (constraints.maxWidth - 12) / 2
-                    : constraints.maxWidth;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(width: fieldWidth, child: _dropdown()),
-                    SizedBox(
-                      width: fieldWidth,
-                      child: _numberField(
-                        'Source slots (1–10)',
-                        _sourceSlots,
-                        (v) => setState(() => _sourceSlots = v.clamp(1, 10)),
-                      ),
-                    ),
-                    SizedBox(
-                      width: fieldWidth,
-                      child: _numberField(
-                        'Batch target',
-                        _batchTarget,
-                        (v) =>
-                            setState(() => _batchTarget = v.clamp(1, 100000)),
-                      ),
-                    ),
-                    SizedBox(
-                      width: fieldWidth,
-                      child: _numberField(
-                        'Upload unit',
-                        _uploadTarget,
-                        (v) =>
-                            setState(() => _uploadTarget = v.clamp(1, 100000)),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+            _modelConfiguration(),
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
@@ -580,9 +696,9 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
               runSpacing: 10,
               children: [
                 FilledButton.icon(
-                  onPressed: () => _notice('Configuration loaded'),
-                  icon: const Icon(Icons.folder_open_outlined),
-                  label: const Text('Load'),
+                  onPressed: _saveConfiguration,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Save models'),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: () => _sendAction('switch'),
@@ -612,20 +728,135 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     );
   }
 
-  Widget _dropdown() => DropdownButtonFormField<String>(
-    initialValue: _selectedModel,
-    isExpanded: true,
-    decoration: const InputDecoration(labelText: 'Selected model'),
-    items: _models
-        .map(
-          (m) => DropdownMenuItem(
-            value: m.name,
-            child: Text(m.name, overflow: TextOverflow.ellipsis),
+  Widget _modelConfiguration() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'MODEL SLOTS',
+              style: TextStyle(
+                color: Color(0xff64dc98),
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
           ),
-        )
-        .toList(),
-    onChanged: (value) =>
-        setState(() => _selectedModel = value ?? _selectedModel),
+          SizedBox(
+            width: 150,
+            child: DropdownButtonFormField<int>(
+              initialValue: _sourceSlots,
+              decoration: const InputDecoration(labelText: 'Models'),
+              items: [
+                for (var count = 1; count <= 10; count++)
+                  DropdownMenuItem(value: count, child: Text('$count')),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  _sourceSlots = value;
+                  if (_selectedSlot >= value) _selectedSlot = value - 1;
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 920 ? 2 : 1;
+          final width = (constraints.maxWidth - (columns - 1) * 10) / columns;
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var index = 0; index < _sourceSlots; index++)
+                SizedBox(
+                  width: width,
+                  child: _modelSlot(index, _modelSlots[index]),
+                ),
+            ],
+          );
+        },
+      ),
+    ],
+  );
+
+  Widget _modelSlot(int index, ModelSlotDraft slot) => Container(
+    key: ValueKey('model-slot-$index'),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xff0a1711),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(
+        color: _selectedSlot == index
+            ? const Color(0xff35d07f)
+            : const Color(0xff1e4733),
+        width: _selectedSlot == index ? 2 : 1,
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Model ${index + 1}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            ChoiceChip(
+              selected: _selectedSlot == index,
+              label: Text(_selectedSlot == index ? 'Selected' : 'Select'),
+              onSelected: (_) => setState(() => _selectedSlot = index),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        TextFormField(
+          key: ValueKey('model-name-$index'),
+          initialValue: slot.name,
+          decoration: const InputDecoration(labelText: 'Model name'),
+          onChanged: (value) => slot.name = value,
+        ),
+        const SizedBox(height: 9),
+        TextFormField(
+          key: ValueKey('model-connector-$index'),
+          initialValue: slot.connector,
+          decoration: const InputDecoration(
+            labelText: 'Connector or source URL',
+            hintText: 'https://source.example/api',
+          ),
+          keyboardType: TextInputType.url,
+          onChanged: (value) => slot.connector = value,
+        ),
+        const SizedBox(height: 9),
+        Row(
+          children: [
+            Expanded(
+              child: _numberField(
+                'Batch target',
+                slot.batchTarget,
+                (value) => slot.batchTarget = value.clamp(1, 100000),
+                fieldKey: 'model-batch-$index',
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: _numberField(
+                'Upload unit',
+                slot.uploadTarget,
+                (value) => slot.uploadTarget = value.clamp(1, 100000),
+                fieldKey: 'model-upload-$index',
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 
   Widget _connectionPanel() => Container(
@@ -720,9 +951,14 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     ),
   );
 
-  Widget _numberField(String label, int value, ValueChanged<int> changed) {
+  Widget _numberField(
+    String label,
+    int value,
+    ValueChanged<int> changed, {
+    String? fieldKey,
+  }) {
     return TextFormField(
-      key: ValueKey('$label-$value'),
+      key: ValueKey(fieldKey ?? '$label-$value'),
       initialValue: '$value',
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
@@ -741,21 +977,21 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         children: [
           _sectionTitle('Activity', 'Most recent recorded messages'),
           const SizedBox(height: 10),
-          const LogRow(
-            time: 'Now',
-            text: 'All three lanes are healthy',
-            color: Color(0xff35d07f),
-          ),
-          const LogRow(
-            time: '2m',
-            text: 'LOC staging receipt advanced',
-            color: Color(0xfff5c451),
-          ),
-          const LogRow(
-            time: '5m',
-            text: 'Publisher completed fresh live duplicate delta',
-            color: Color(0xff35d07f),
-          ),
+          if (_activity.isEmpty)
+            LogRow(
+              time: 'Now',
+              text: _connectionMessage,
+              color: _hasLiveData
+                  ? const Color(0xff35d07f)
+                  : const Color(0xfff5c451),
+            )
+          else
+            for (final entry in _activity.take(10))
+              LogRow(
+                time: formatActivityAge(_clock.difference(entry.at)),
+                text: entry.text,
+                color: entry.color,
+              ),
         ],
       ),
     ),
@@ -778,6 +1014,40 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   );
 }
 
+class ModelSlotDraft {
+  ModelSlotDraft({
+    this.name = '',
+    this.connector = '',
+    this.batchTarget = 2000,
+    this.uploadTarget = 100,
+  });
+
+  String name;
+  String connector;
+  int batchTarget;
+  int uploadTarget;
+
+  Map<String, dynamic> toJson(int slot) => {
+    'slot': slot,
+    'name': name.trim(),
+    'connector': connector.trim(),
+    'batchTarget': batchTarget,
+    'uploadTarget': uploadTarget,
+  };
+}
+
+class ActivityEntry {
+  const ActivityEntry({
+    required this.at,
+    required this.text,
+    required this.color,
+  });
+
+  final DateTime at;
+  final String text;
+  final Color color;
+}
+
 enum Health { healthy, watch, stuck, failed }
 
 class ModelView {
@@ -790,6 +1060,8 @@ class ModelView {
     required this.uploaded,
     required this.health,
     required this.detail,
+    this.progressSince,
+    this.stageSince,
   });
   final String id;
   final String name;
@@ -799,6 +1071,13 @@ class ModelView {
   final int uploaded;
   final Health health;
   final String detail;
+  final DateTime? progressSince;
+  final DateTime? stageSince;
+
+  double get progress =>
+      target == 0 ? 0.0 : (accepted / target).clamp(0.0, 1.0);
+
+  int get progressTenthsPercent => (progress * 1000).round();
 
   factory ModelView.fromJson(Map<String, dynamic> json) {
     final healthName = (json['health'] as String? ?? 'watch').toLowerCase();
@@ -814,13 +1093,41 @@ class ModelView {
         orElse: () => Health.watch,
       ),
       detail: json['detail'] as String? ?? 'No current detail',
+      progressSince: DateTime.tryParse(json['progressSince'] as String? ?? ''),
+      stageSince: DateTime.tryParse(json['stageSince'] as String? ?? ''),
     );
   }
 }
 
+class ProgressObservation {
+  const ProgressObservation({
+    required this.progressTenthsPercent,
+    required this.since,
+  });
+
+  final int progressTenthsPercent;
+  final DateTime since;
+}
+
+class StageObservation {
+  const StageObservation({required this.stage, required this.since});
+
+  final String stage;
+  final DateTime since;
+}
+
 class ModelCard extends StatelessWidget {
-  const ModelCard({super.key, required this.model});
+  const ModelCard({
+    super.key,
+    required this.model,
+    required this.observation,
+    required this.stageObservation,
+    required this.now,
+  });
   final ModelView model;
+  final ProgressObservation? observation;
+  final StageObservation? stageObservation;
+  final DateTime now;
 
   Color get color => switch (model.health) {
     Health.healthy => const Color(0xff35d07f),
@@ -831,9 +1138,13 @@ class ModelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = model.target == 0
-        ? 0.0
-        : (model.accepted / model.target).clamp(0.0, 1.0);
+    final progress = model.progress;
+    final heldFor = observation == null
+        ? Duration.zero
+        : now.difference(observation!.since);
+    final stageHeldFor = stageObservation == null
+        ? Duration.zero
+        : now.difference(stageObservation!.since);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -896,6 +1207,39 @@ class ModelCard extends StatelessWidget {
               '${(progress * 100).toStringAsFixed(1)}% · ${model.uploaded} uploaded',
               softWrap: true,
             ),
+            if (heldFor.inSeconds >= 10) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.timer_outlined,
+                    size: 14,
+                    color: Color(0xff83a891),
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      'At ${(progress * 100).toStringAsFixed(1)}% for ${formatDuration(heldFor)}',
+                      key: ValueKey('progress-duration-${model.id}'),
+                      softWrap: true,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xff83a891),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (stageHeldFor.inSeconds >= 10) ...[
+              const SizedBox(height: 4),
+              Text(
+                'In ${model.stage} for ${formatDuration(stageHeldFor)}',
+                key: ValueKey('stage-duration-${model.id}'),
+                softWrap: true,
+                style: const TextStyle(fontSize: 11, color: Color(0xff83a891)),
+              ),
+            ],
             const SizedBox(height: 5),
             Text(
               model.detail,
@@ -907,6 +1251,24 @@ class ModelCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String formatDuration(Duration duration) {
+  final seconds = duration.inSeconds.clamp(0, 1 << 31);
+  final hours = seconds ~/ 3600;
+  final minutes = (seconds % 3600) ~/ 60;
+  final remainder = seconds % 60;
+  if (hours > 0) return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  if (minutes > 0) {
+    return '${minutes}m ${remainder.toString().padLeft(2, '0')}s';
+  }
+  return '${remainder}s';
+}
+
+String formatActivityAge(Duration duration) {
+  if (duration.inSeconds < 60) return '${duration.inSeconds.clamp(0, 59)}s';
+  if (duration.inMinutes < 60) return '${duration.inMinutes}m';
+  return '${duration.inHours}h';
 }
 
 class Metric extends StatelessWidget {

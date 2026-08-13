@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sweeper.transition import (evaluate, evaluate_throughput,
+from sweeper.transition import (evaluate, evaluate_positive_remainder_idle, evaluate_throughput,
                                 plan_slot_continuation, validate_source_slots)
 
 
@@ -54,6 +54,20 @@ class SourceTransitionTest(unittest.TestCase):
     def test_throughput_waits_for_full_sample(self):
         result = evaluate_throughput({"baseline_seconds_per_100": 466}, 99, 1200)
         self.assertEqual("collecting-sample", result["status"])
+
+    def test_idle_positive_remainder_uses_normal_staging_route(self):
+        waiting = evaluate_positive_remainder_idle(883, 2000, 899)
+        self.assertFalse(waiting["freezePositiveRemainder"])
+        automatic = evaluate_positive_remainder_idle(883, 2000, 900)
+        self.assertTrue(automatic["freezePositiveRemainder"])
+        self.assertEqual("idle-positive-remainder", automatic["reason"])
+        manual = evaluate_positive_remainder_idle(10, 2000, 1, operator_switch=True)
+        self.assertTrue(manual["freezePositiveRemainder"])
+        self.assertIn("duplicate-screening", manual["neverBypasses"])
+
+    def test_empty_remainder_never_stages_even_with_switch(self):
+        result = evaluate_positive_remainder_idle(0, 2000, 9999, operator_switch=True)
+        self.assertFalse(result["freezePositiveRemainder"])
 
     def test_waits_then_becomes_ready_from_exact_receipts(self):
         with tempfile.TemporaryDirectory() as directory:

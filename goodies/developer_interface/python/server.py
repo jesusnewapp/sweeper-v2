@@ -27,9 +27,11 @@ def response(handler: BaseHTTPRequestHandler, status: int, payload: Dict[str, An
     handler.wfile.write(body)
 
 
-def handler_factory(controller: SweeperController, token: str):
+def handler_factory(controller: SweeperController, token: str, local_no_auth: bool = False):
     class Handler(BaseHTTPRequestHandler):
         def _authorized(self) -> bool:
+            if local_no_auth:
+                return self.client_address[0] in {"127.0.0.1", "::1"}
             supplied = self.headers.get("Authorization", "").removeprefix("Bearer ")
             return bool(token) and hmac.compare_digest(supplied, token)
 
@@ -73,15 +75,28 @@ def main() -> None:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8790)
+    parser.add_argument("--token-file", type=Path)
+    parser.add_argument(
+        "--local-no-auth",
+        action="store_true",
+        help="allow tokenless loopback clients; never valid with a non-loopback host",
+    )
     parser.add_argument("--cert", type=Path)
     parser.add_argument("--key", type=Path)
     args = parser.parse_args()
     token = os.environ.get("WEB_SWEEPER_TOKEN", "")
-    if not token:
+    if not token and args.token_file:
+        token = args.token_file.expanduser().read_text(encoding="utf-8").strip()
+    if args.local_no_auth and args.host not in {"127.0.0.1", "::1", "localhost"}:
+        raise SystemExit("--local-no-auth is restricted to loopback")
+    if not token and not args.local_no_auth:
         raise SystemExit("WEB_SWEEPER_TOKEN is required")
     if args.host not in {"127.0.0.1", "::1", "localhost"} and not (args.cert and args.key):
         raise SystemExit("non-loopback mobile access requires --cert and --key (HTTPS)")
-    server = ThreadingHTTPServer((args.host, args.port), handler_factory(SweeperController(args.config), token))
+    server = ThreadingHTTPServer(
+        (args.host, args.port),
+        handler_factory(SweeperController(args.config), token, args.local_no_auth),
+    )
     if args.cert and args.key:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(args.cert, args.key)

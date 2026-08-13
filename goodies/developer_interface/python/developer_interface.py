@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 import tkinter as tk
 import urllib.error
 import urllib.request
@@ -41,7 +42,10 @@ class Interface(tk.Tk):
         self.message = tk.StringVar(value="Controller not connected")
         self.game_message = tk.StringVar(value="Press Start, watch the pads, then repeat.")
         self.score_text = tk.StringVar(value=self._score_label())
+        self.progress_observations: dict[str, tuple[str, float]] = {}
+        self.progress_labels: dict[str, tuple[dict, tk.StringVar]] = {}
         self._build()
+        self.after(1000, self._tick_progress)
 
     def _load_state(self) -> dict:
         try:
@@ -143,6 +147,7 @@ class Interface(tk.Tk):
             self.message.set(f"Connected · Codex Live {data.get('codexLive', 0):,}")
             for child in self.lanes.winfo_children():
                 child.destroy()
+            self.progress_labels.clear()
             for lane in data.get("lanes", []):
                 self._lane_card(lane)
         except (urllib.error.URLError, ValueError, OSError) as error:
@@ -168,6 +173,34 @@ class Interface(tk.Tk):
                  font=("Helvetica", 12, "bold")).pack(anchor="w")
         tk.Label(body, text=f"{lane.get('stage', 'unknown')} · {lane.get('accepted', 0):,} / {lane.get('target', 0):,} · {lane.get('uploaded', 0):,} uploaded",
                  bg=PANEL, fg=MUTED, justify="left", wraplength=650).pack(anchor="w")
+        progress_text = tk.StringVar(value=self._progress_text(lane))
+        tk.Label(body, textvariable=progress_text, bg=PANEL, fg=MUTED,
+                 justify="left", wraplength=650).pack(anchor="w")
+        self.progress_labels[str(lane.get("id", lane.get("name", "lane")))] = (lane, progress_text)
+
+    def _progress_text(self, lane: dict) -> str:
+        lane_id = str(lane.get("id", lane.get("name", "lane")))
+        target = int(lane.get("target", 0) or 0)
+        accepted = int(lane.get("accepted", 0) or 0)
+        progress = min(1.0, accepted / target) if target else 0.0
+        key = f"{progress * 100:.1f}"
+        now = time.monotonic()
+        current = self.progress_observations.get(lane_id)
+        if current is None or current[0] != key:
+            self.progress_observations[lane_id] = (key, now)
+            current = (key, now)
+        elapsed = int(now - current[1])
+        if elapsed < 10:
+            return f"{key}%"
+        minutes, seconds = divmod(elapsed, 60)
+        hours, minutes = divmod(minutes, 60)
+        duration = f"{hours}h {minutes:02d}m" if hours else (f"{minutes}m {seconds:02d}s" if minutes else f"{seconds}s")
+        return f"At {key}% for {duration}"
+
+    def _tick_progress(self) -> None:
+        for lane, label in self.progress_labels.values():
+            label.set(self._progress_text(lane))
+        self.after(1000, self._tick_progress)
 
     def _choose_color(self) -> None:
         selected = colorchooser.askcolor(self.text_color, title="Readable text color")[1]

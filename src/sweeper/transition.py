@@ -118,6 +118,41 @@ def evaluate_throughput(policy: dict, accepted: int, elapsed_seconds: float) -> 
                            else "continue-current-source")}
 
 
+def evaluate_positive_remainder_idle(accepted: int, target: int,
+                                     idle_seconds: float,
+                                     idle_limit_seconds: float = 900.0,
+                                     operator_switch: bool = False) -> dict:
+    """Join stalled discovery to the normal receipt-bound staging route.
+
+    This decision is deliberately a stickman: it may stop discovery and
+    preserve an atomic positive remainder, but it cannot validate, stage,
+    publish, or bypass any integrity boundary by itself.
+    """
+    if accepted < 0 or target < 1 or accepted > target:
+        raise ValueError("accepted and target are out of range")
+    if idle_seconds < 0 or idle_limit_seconds < 1:
+        raise ValueError("idle durations are out of range")
+    positive = accepted > 0
+    automatic = positive and idle_seconds >= idle_limit_seconds
+    freeze = positive and (operator_switch or automatic)
+    return {
+        "accepted": accepted,
+        "target": target,
+        "nurtureScorePercent": round(min(100.0, accepted * 100.0 / target), 2),
+        "idleSeconds": float(idle_seconds),
+        "idleLimitSeconds": float(idle_limit_seconds),
+        "operatorSwitch": bool(operator_switch),
+        "freezePositiveRemainder": freeze,
+        "reason": ("operator-switch" if operator_switch and positive else
+                   "idle-positive-remainder" if automatic else
+                   "continue-discovery"),
+        "nextAction": ("stop-child-preserve-checkpoint-run-normal-validation-staging"
+                       if freeze else "continue-discovery"),
+        "neverBypasses": ["exact-staging-membership", "duplicate-screening",
+                          "single-production-writer", "live-verification"],
+    }
+
+
 def evaluate_route(route: dict, base: Path) -> dict:
     """Evaluate one transition without starting or stopping a process."""
     required = ("from", "to", "completion_receipt", "cleanup_receipt", "checkpoint")

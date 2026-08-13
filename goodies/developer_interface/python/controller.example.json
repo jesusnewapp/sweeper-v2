@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "projectRoot": ".",
+  "metricsPath": "work/developer-interface-metrics.json",
   "codexLive": 0,
   "lanes": [
     {
@@ -23,6 +24,7 @@
     },
     {
       "id": "publisher",
+      "kind": "publisher",
       "name": "Stage-to-live publisher",
       "statePath": "work/publisher/state.json",
       "target": 100,

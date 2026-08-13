@@ -40,6 +40,15 @@ def _timestamp(value: Any) -> Optional[datetime]:
         return None
 
 
+def _count(value: Any) -> int:
+    if isinstance(value, list):
+        return len(value)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 class SweeperController:
     """Loads trusted local state and exposes allow-listed control actions."""
 
@@ -49,25 +58,34 @@ class SweeperController:
         self.config = _read_json(self.config_path)
         root = self.config.get("projectRoot") or Path(__file__).resolve().parents[3]
         self.project_root = Path(root).expanduser().resolve()
+        self._progress_observations: Dict[str, Dict[str, Any]] = {}
+        self._stage_observations: Dict[str, Dict[str, Any]] = {}
 
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()
         return path if path.is_absolute() else self.project_root / path
 
     def _lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
+        if definition.get("kind") == "publisher":
+            return self._publisher_lane(definition)
         state_path = self._path(str(definition.get("statePath", "missing.json")))
         state = _read_json(state_path)
         current_root = _first(state, ("currentRoot", "root"), "")
         checkpoint = _read_json(Path(current_root) / "checkpoint.json") if current_root else {}
         progress = _read_json(Path(current_root) / "staging_upload_progress.json") if current_root else {}
-        accepted = int(
+        accepted = _count(
             _first(
                 checkpoint,
-                ("accepted", "acceptedCount", "catalogCount"),
-                _first(state, ("acceptedInCurrentBatch", "accepted"), 0),
+                ("acceptedCount", "catalogCount", "accepted"),
+                _first(
+                    state,
+                    ("acceptedInCurrentBatch", "accepted", "membershipReconciliation"),
+                    0,
+                ),
             )
-            or 0
         )
+        if isinstance(state.get("membershipReconciliation"), dict) and not accepted:
+            accepted = _count(state["membershipReconciliation"].get("catalogMembers"))
         target = int(_first(state, ("currentBatchSize", "batchSize", "target"), definition.get("target", 0)) or 0)
         uploaded = int(_first(progress, ("uploaded", "uploadedCount", "verified"), 0) or 0)
         stage = str(_first(state, ("stage", "status"), "inactive"))
@@ -100,12 +118,120 @@ class SweeperController:
             "currentRoot": current_root,
         }
 
+    def _publisher_lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
+        state_path = self._path(str(definition.get("statePath", "missing.json")))
+        state = _read_json(state_path)
+        advances = state.get("automaticAdvanceLog")
+        latest = advances[-1] if isinstance(advances, list) and advances else {}
+        current_root = str(state.get("currentUnit") or latest.get("root") or "")
+        current = bool(state.get("currentUnit"))
+        if current:
+            root = Path(current_root)
+            catalog = _read_json(root / "catalog.json").get("books", [])
+            publication = _read_json(root / "publication_verification.json")
+            promotion = _read_json(root / "promotion_validation.json")
+            accepted = _count(catalog)
+            published = _count(publication.get("published"))
+            verified = _count(promotion.get("liveVerified", publication.get("verified")))
+            target = accepted
+            updated = _first(
+                promotion,
+                ("checkedAt", "completedAt"),
+                _first(publication, ("checkedAt", "completedAt"), state.get("checkedAt", "")),
+            )
+            stage = str(state.get("currentAction", "publishing"))
+        else:
+            published = _count(latest.get("published"))
+            verified = _count(latest.get("liveVerified"))
+            accepted = published
+            target = published or int(definition.get("target", 100))
+            updated = latest.get("completedAt") or state.get("checkedAt", "")
+            stage = "Ready for next unit"
+        observed = _timestamp(state.get("checkedAt"))
+        age = (datetime.now(timezone.utc) - observed).total_seconds() if observed else None
+        running = bool(state.get("listenerActive"))
+        if not running:
+            health = "failed"
+        elif age is None or age > int(definition.get("redAfterSeconds", 3600)):
+            health = "stuck"
+        elif age > int(definition.get("watchAfterSeconds", 900)):
+            health = "watch"
+        else:
+            health = "healthy"
+        queue = state.get("queue") if isinstance(state.get("queue"), dict) else {}
+        continuation = (
+            state.get("automaticContinuation")
+            if isinstance(state.get("automaticContinuation"), dict)
+            else {}
+        )
+        return {
+            "id": definition.get("id", "publisher"),
+            "name": definition.get("name", "Stage-to-live publisher"),
+            "stage": stage,
+            "accepted": accepted,
+            "target": target,
+            "uploaded": verified,
+            "published": published,
+            "liveVerified": verified,
+            "health": health,
+            "detail": (
+                f"{_count(queue.get('pendingUnits'))} queued · "
+                f"{_count(continuation.get('successfulAdvances'))} automatic advances"
+            ),
+            "updatedAt": updated,
+            "currentRoot": current_root,
+            "progressSince": latest.get("completedAt") if not current else None,
+            "codexLive": _count(
+                _read_json(Path(current_root) / "promotion_validation.json").get(
+                    "publishedLiveTotal"
+                )
+            )
+            if current_root
+            else 0,
+        }
+
+    def _metrics(self) -> Dict[str, Any]:
+        value = self.config.get("metricsPath")
+        if not value:
+            return {}
+        return _read_json(self._path(str(value)))
+
     def status(self) -> Dict[str, Any]:
         lanes = [self._lane(item) for item in self.config.get("lanes", []) if isinstance(item, dict)]
+        checked_at = datetime.now(timezone.utc)
+        metrics = self._metrics()
+        active_ids = {str(lane["id"]) for lane in lanes}
+        self._progress_observations = {
+            lane_id: observation
+            for lane_id, observation in self._progress_observations.items()
+            if lane_id in active_ids
+        }
+        for lane in lanes:
+            target = int(lane.get("target", 0) or 0)
+            progress = min(1.0, int(lane.get("accepted", 0) or 0) / target) if target else 0.0
+            key = round(progress * 1000)
+            lane_id = str(lane["id"])
+            observation = self._progress_observations.get(lane_id)
+            if observation is None or observation["key"] != key:
+                observation = {"key": key, "since": checked_at}
+                self._progress_observations[lane_id] = observation
+            lane["progressSince"] = observation["since"].isoformat().replace("+00:00", "Z")
+            stage = str(lane.get("stage", "unknown"))
+            stage_observation = self._stage_observations.get(lane_id)
+            if stage_observation is None or stage_observation["stage"] != stage:
+                supplied = _timestamp(lane.get("updatedAt"))
+                stage_observation = {"stage": stage, "since": supplied or checked_at}
+                self._stage_observations[lane_id] = stage_observation
+            lane["stageSince"] = stage_observation["since"].isoformat().replace("+00:00", "Z")
+        codex_live = _count(metrics.get("codexLive", self.config.get("codexLive", 0)))
+        publisher_live = max((_count(lane.get("codexLive")) for lane in lanes), default=0)
+        codex_live = max(codex_live, publisher_live)
         return {
             "schemaVersion": 1,
-            "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "codexLive": int(self.config.get("codexLive", 0)),
+            "checkedAt": checked_at.isoformat().replace("+00:00", "Z"),
+            "codexLive": codex_live,
+            "confirmedStaged": _count(metrics.get("confirmedStaged")),
+            "metricsCheckedAt": metrics.get("checkedAt", ""),
             "lanes": lanes,
             "allHealthy": bool(lanes) and all(item["health"] == "healthy" for item in lanes),
             "productionWriterLimit": 1,
@@ -136,11 +262,28 @@ class SweeperController:
 
     def save_preferences(self, preferences: Dict[str, Any]) -> None:
         """Atomically save harmless UI settings separately from host commands."""
+        slot_count = max(1, min(10, int(preferences.get("sourceSlots", 2))))
+        raw_models = preferences.get("models", [])
+        models: List[Dict[str, Any]] = []
+        if isinstance(raw_models, list):
+            for index, raw in enumerate(raw_models[:slot_count], start=1):
+                if not isinstance(raw, dict):
+                    continue
+                name = str(raw.get("name", "")).strip()[:120]
+                connector = str(raw.get("connector", "")).strip()[:1000]
+                models.append({
+                    "slot": index,
+                    "name": name,
+                    "connector": connector,
+                    "batchTarget": max(1, min(100000, int(raw.get("batchTarget", 2000)))),
+                    "uploadTarget": max(1, min(100000, int(raw.get("uploadTarget", 100)))),
+                })
         allowed = {
-            "sourceSlots": max(1, min(10, int(preferences.get("sourceSlots", 2)))),
+            "sourceSlots": slot_count,
             "batchTarget": max(1, min(100000, int(preferences.get("batchTarget", 2000)))),
             "uploadTarget": max(1, min(100000, int(preferences.get("uploadTarget", 100)))),
             "tertiaryEnabled": bool(preferences.get("tertiaryEnabled", False)),
+            "models": models,
         }
         destination = self.config_path.with_name("controller.preferences.json")
         destination.parent.mkdir(parents=True, exist_ok=True)
