@@ -772,10 +772,15 @@ class SweeperController:
                 # total or that rollover falsely looks like a regression to 0.
                 accepted = _count(lane.get("acceptedCumulative", lane.get("accepted")))
                 growth = self._accepted_growth_observations.get(lane_id)
-                if growth is None or accepted < _count(growth.get("accepted")):
+                if growth is None:
                     growth = {"accepted": accepted, "lastGrowth": (
                         _timestamp(lane.get("acceptedUpdatedAt")) if accepted > 0 else None
                     )}
+                elif accepted < _count(growth.get("accepted")):
+                    # Quarantine/revocation is an integrity correction, not
+                    # accepted-book growth. Preserve the last real increase so
+                    # a freshly written rejection cannot turn health green.
+                    growth = {"accepted": accepted, "lastGrowth": growth.get("lastGrowth")}
                 elif accepted > _count(growth.get("accepted")):
                     growth = {"accepted": accepted, "lastGrowth": checked_at}
                 self._accepted_growth_observations[lane_id] = growth

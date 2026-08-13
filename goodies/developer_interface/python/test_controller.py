@@ -276,6 +276,29 @@ class ControllerTests(unittest.TestCase):
                 journal.write(json.dumps({"kind": "rejected", "id": "three"}) + "\n")
             self.assertEqual(2, controller.status()["lanes"][0]["accepted"])
 
+    def test_rejection_does_not_reset_last_accepted_growth(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_001"
+            unit.mkdir()
+            progress = unit / "progress.jsonl"
+            progress.write_text(json.dumps({"kind": "accepted", "id": "one"}) + "\n")
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "prepare", "currentRoot": str(unit),
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }))
+            controller = SweeperController(config_path)
+            before = controller.status()["lanes"][0]["acceptedGrowthSince"]
+            with progress.open("a", encoding="utf-8") as journal:
+                journal.write(json.dumps({"kind": "rejected", "id": "one"}) + "\n")
+            lane = controller.status()["lanes"][0]
+            self.assertEqual(0, lane["accepted"])
+            self.assertEqual(before, lane["acceptedGrowthSince"])
+
     def test_unconfigured_actions_are_disabled(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

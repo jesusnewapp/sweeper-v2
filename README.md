@@ -303,6 +303,12 @@ The large Internet Archive-hosted slots reuse one proven public API and direct-
 download adapter with different collection queries; prior identifiers and
 content hashes are excluded across slots.
 
+Source or denominational labels are not blanket relevance exclusions. An item
+that professes God and Christ is evaluated on its actual content while its
+tradition remains explicit; Christian Science material is eligible under the
+same rights, completeness, integrity, and duplicate gates as other Christian
+traditions.
+
 The same practice configuration exposes an independent desired publication
 batch-size placeholder globally and per source. Acquisition may stage a larger
 unit while the one live writer publishes configured units from 1 through 1,000,
@@ -493,6 +499,12 @@ pressure changes, review retry, per-item quarantine, survivor rebinding,
 revalidation, live-delta refresh, writer recovery, queue advancement, and
 verified staging cleanup. Extensions can propose local candidates; the advisor
 still records the chosen action and keeps invariant gates unchanged.
+
+UI health is based only on observed accepted-count growth. Rejections and
+quarantines correct authoritative membership but cannot refresh the health
+clock. Publisher retry fingerprints bind every eligibility artifact, including
+checkpoint and import-report membership, so a repaired mismatch becomes a safe
+new retry rather than an unchanged parked failure.
 
 ## Progressive 2 + 1 → 2 → 6 layout
 
