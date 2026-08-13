@@ -47,11 +47,13 @@ class SweeperV2Test(unittest.TestCase):
             root=Path(directory); items={f"source:{n}":hashlib.sha256(str(n).encode()).hexdigest() for n in range(30)}
             result=nurture_preserve(root,items,"validated",30)
             self.assertTrue(result["active"]); self.assertEqual(30,result["members"])
-            self.assertGreaterEqual(result["operationalAuthorityScore"],80)
+            self.assertGreaterEqual(result["nurtureIntensityPercent"],80)
+            self.assertEqual("none",result["tertiaryAuthority"])
+            self.assertFalse(result["advisory"])
             self.assertTrue(Path(result["snapshot"]).exists())
             self.assertTrue(result["singleItemNeverBlocksContinuation"])
 
-    def test_pivot_enforcer_holds_source_and_translator_to_sixty_seconds(self):
+    def test_pivot_enforcer_holds_source_and_translator_to_ten_minutes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             lanes = [{"lane": "source-one", "kind": "source", "required": True,
@@ -60,7 +62,9 @@ class SweeperV2Test(unittest.TestCase):
                       "counts": {"queued": 2}}]
             first = evaluate(root, lanes, current_epoch=1000)
             self.assertFalse(first["enforcementRequired"])
-            overdue = evaluate(root, lanes, current_epoch=1060)
+            almost = evaluate(root, lanes, current_epoch=1599)
+            self.assertFalse(almost["enforcementRequired"])
+            overdue = evaluate(root, lanes, current_epoch=1600)
             self.assertTrue(overdue["enforcementRequired"])
             self.assertEqual(["source-one", "translator"], overdue["overdue"])
             self.assertTrue(overdue["doesNotChoosePivot"])

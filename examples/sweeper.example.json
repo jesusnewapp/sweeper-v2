@@ -1,6 +1,9 @@
 {
   "workspace": "./sweeper-data",
+  "engine": {"mode": "ultra"},
   "nurture": {"threshold": 30},
+  "tertiary": {"enabled": false, "inquisitive_enabled": false,
+    "adapter_enabled": false, "signals": ["nurture", "pivot", "continuation"]},
   "user_agent": "Example University Sweeper V2/0.1 (archives@example.edu)",
   "layout": {"major_slots": 2, "minor_slots": 2},
   "policy": {

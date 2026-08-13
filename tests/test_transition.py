@@ -3,10 +3,58 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sweeper.transition import evaluate
+from sweeper.transition import (evaluate, evaluate_throughput,
+                                plan_slot_continuation, validate_source_slots)
 
 
 class SourceTransitionTest(unittest.TestCase):
+    def test_configurable_ordered_source_slots(self):
+        config = {"source_slot_count": 2, "source_slots": [
+            {"slot": 1, "id": "one", "acquisition_target": 1000,
+             "launch_command": ["adapter-one"], "allow_partial_on_exhaustion": True},
+            {"slot": 2, "id": "two", "acquisition_target": 1000,
+             "launch_command": ["adapter-two"], "allow_partial_on_exhaustion": True},
+        ]}
+        self.assertEqual(2, len(validate_source_slots(config)))
+        self.assertEqual("restart-current-source",
+                         plan_slot_continuation(config, 1, 1000, False)["action"])
+        transition = plan_slot_continuation(config, 1, 73, True)
+        self.assertEqual("advance-to-next-source", transition["action"])
+        self.assertEqual("two", transition["source"])
+        self.assertTrue(transition["stageRemainder"])
+
+    def test_slot_count_must_match(self):
+        with self.assertRaises(ValueError):
+            validate_source_slots({"source_slot_count": 2, "source_slots": [
+                {"slot": 1, "id": "one", "acquisition_target": 1000,
+                 "launch_command": ["adapter-one"]}
+            ]})
+
+    def test_exhausted_empty_source_advances_without_staging(self):
+        config = {"source_slot_count": 2, "source_slots": [
+            {"slot": 1, "id": "one", "acquisition_target": 1000,
+             "launch_command": ["adapter-one"], "allow_partial_on_exhaustion": True},
+            {"slot": 2, "id": "two", "acquisition_target": 1000,
+             "launch_command": ["adapter-two"], "allow_partial_on_exhaustion": True},
+        ]}
+        transition = plan_slot_continuation(config, 1, 0, True)
+        self.assertEqual("advance-to-next-source", transition["action"])
+        self.assertFalse(transition["stageRemainder"])
+
+    def test_throughput_marker_uses_normalized_hundred(self):
+        policy = {"baseline_seconds_per_100": 466,
+                  "slow_source_multiplier": 2.0,
+                  "minimum_accepted_sample": 100}
+        healthy = evaluate_throughput(policy, 100, 900)
+        self.assertEqual("within-marker", healthy["status"])
+        slow = evaluate_throughput(policy, 200, 1900)
+        self.assertEqual("slow-right-now", slow["status"])
+        self.assertEqual("transition-at-next-safe-receipt-boundary", slow["nextAction"])
+
+    def test_throughput_waits_for_full_sample(self):
+        result = evaluate_throughput({"baseline_seconds_per_100": 466}, 99, 1200)
+        self.assertEqual("collecting-sample", result["status"])
+
     def test_waits_then_becomes_ready_from_exact_receipts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

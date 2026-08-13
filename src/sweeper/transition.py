@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+MAX_SOURCE_SLOTS = 64
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -22,6 +25,97 @@ def atomic_json(path: Path, payload: object) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def validate_source_slots(config: dict) -> list[dict]:
+    """Validate an ordered, configurable source pool.
+
+    Slots describe policy and commands; this module never executes arbitrary
+    commands. A deployment controller consumes the returned continuation plan
+    only after recording the exact receipts required by ``evaluate_route``.
+    """
+    slots = config.get("source_slots")
+    if slots is None:
+        return []
+    count = config.get("source_slot_count")
+    if not isinstance(count, int) or not 1 <= count <= MAX_SOURCE_SLOTS:
+        raise ValueError(f"source_slot_count must be an integer from 1 to {MAX_SOURCE_SLOTS}")
+    if not isinstance(slots, list) or len(slots) != count:
+        raise ValueError("source_slots length must exactly match source_slot_count")
+    expected = list(range(1, count + 1))
+    numbers = [slot.get("slot") for slot in slots]
+    if numbers != expected:
+        raise ValueError("source slots must be ordered consecutively from 1")
+    identities = [str(slot.get("id", "")).strip() for slot in slots]
+    if any(not identity for identity in identities) or len(set(identities)) != len(identities):
+        raise ValueError("every source slot requires a unique non-empty id")
+    for slot in slots:
+        target = slot.get("acquisition_target")
+        if not isinstance(target, int) or not 1 <= target <= 100_000:
+            raise ValueError(f"{slot['id']}: acquisition_target must be from 1 to 100000")
+        command = slot.get("launch_command") or slot.get("adapter_command")
+        if not isinstance(command, list) or not command or not all(
+                isinstance(part, str) and part.strip() for part in command):
+            raise ValueError(f"{slot['id']}: a non-empty command array is required")
+    return slots
+
+
+def plan_slot_continuation(config: dict, current_slot: int, staged: int,
+                           source_exhausted: bool) -> dict:
+    """Return the deterministic next action after an exact staging receipt."""
+    slots = validate_source_slots(config)
+    if not slots:
+        raise ValueError("source slot continuation requires source_slots")
+    if not 1 <= current_slot <= len(slots):
+        raise ValueError("current_slot is outside the configured source pool")
+    if staged < 0:
+        raise ValueError("staged cannot be negative")
+    slot = slots[current_slot - 1]
+    target = slot["acquisition_target"]
+    if staged > target:
+        raise ValueError("staged count exceeds the active slot target")
+    if not source_exhausted:
+        if staged != target:
+            raise ValueError("a non-exhausted source may continue only after a full unit")
+        return {"action": "restart-current-source", "slot": current_slot,
+                "source": slot["id"], "stageRemainder": False}
+    if staged and slot.get("allow_partial_on_exhaustion") is not True:
+        raise ValueError("positive exhausted remainder is not allowed by this slot")
+    if current_slot == len(slots):
+        return {"action": "source-pool-complete", "slot": current_slot,
+                "source": slot["id"], "stageRemainder": staged > 0}
+    successor = slots[current_slot]
+    return {"action": "advance-to-next-source", "slot": current_slot + 1,
+            "source": successor["id"], "retiredSource": slot["id"],
+            "stageRemainder": staged > 0}
+
+
+def evaluate_throughput(policy: dict, accepted: int, elapsed_seconds: float) -> dict:
+    """Normalize an observed window to 100 accepts and flag safe failover."""
+    baseline = policy.get("baseline_seconds_per_100")
+    multiplier = policy.get("slow_source_multiplier", 2.0)
+    minimum = policy.get("minimum_accepted_sample", 100)
+    if not isinstance(baseline, (int, float)) or baseline <= 0:
+        raise ValueError("baseline_seconds_per_100 must be positive")
+    if not isinstance(multiplier, (int, float)) or multiplier < 1:
+        raise ValueError("slow_source_multiplier must be at least 1")
+    if not isinstance(minimum, int) or minimum < 1:
+        raise ValueError("minimum_accepted_sample must be a positive integer")
+    if accepted < 0 or elapsed_seconds < 0:
+        raise ValueError("throughput observations cannot be negative")
+    threshold = float(baseline) * float(multiplier)
+    if accepted < minimum:
+        return {"status": "collecting-sample", "accepted": accepted,
+                "minimumAcceptedSample": minimum,
+                "thresholdSecondsPer100": threshold,
+                "nextAction": "continue-current-source"}
+    observed = float(elapsed_seconds) * 100.0 / accepted
+    slow = observed > threshold
+    return {"status": "slow-right-now" if slow else "within-marker",
+            "accepted": accepted, "observedSecondsPer100": observed,
+            "thresholdSecondsPer100": threshold,
+            "nextAction": ("transition-at-next-safe-receipt-boundary" if slow
+                           else "continue-current-source")}
 
 
 def evaluate_route(route: dict, base: Path) -> dict:
@@ -73,6 +167,7 @@ def evaluate_route(route: dict, base: Path) -> dict:
 def evaluate(config_path: Path) -> dict:
     config_path = config_path.resolve()
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    slots = validate_source_slots(config)
     routes = config.get("routes")
     if not isinstance(routes, list) or not routes:
         raise ValueError("transition config requires at least one route")
@@ -81,8 +176,12 @@ def evaluate(config_path: Path) -> dict:
     if len(identities) != len(set(identities)) or len(successors) != len(set(successors)):
         raise ValueError("each source and successor may appear in only one transition route")
     rows = [evaluate_route(route, config_path.parent) for route in routes]
-    return {"schemaVersion": 1, "model": "receipt-bound-source-transition",
+    return {"schemaVersion": 2, "model": "receipt-bound-source-transition",
             "evaluatedAt": now(), "practiceMode": bool(config.get("practice_mode", True)),
+            "sourceSlotCount": len(slots),
+            "sourceSlots": [{"slot": slot["slot"], "id": slot["id"],
+                             "acquisitionTarget": slot["acquisition_target"]}
+                            for slot in slots],
             "routes": rows,
             "ready": sum(row["status"] == "ready-to-transition" for row in rows),
             "waiting": sum(row["status"] != "ready-to-transition" for row in rows),

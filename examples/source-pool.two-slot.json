@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "profile": "two-source-continuous",
+  "source_slot_count": 2,
+  "automatic_cross_source_transition": false,
+  "source_slots": [
+    {
+      "slot": 1,
+      "id": "open-library",
+      "mode": "continuous-same-source-restart",
+      "acquisition_target": 2000,
+      "workers": 2,
+      "minimum_free_gib": 1,
+      "launch_command": ["REPLACE_WITH_OPEN_LIBRARY_DIRECT_DOWNLOAD_ADAPTER"],
+      "allow_partial_on_exhaustion": true
+    },
+    {
+      "slot": 2,
+      "id": "library-of-congress",
+      "mode": "continuous-same-source-restart",
+      "acquisition_target": 2000,
+      "workers": 2,
+      "minimum_free_gib": 1,
+      "launch_command": ["REPLACE_WITH_LOC_DIGITIZED_BOOKS_DIRECT_DOWNLOAD_ADAPTER"],
+      "allow_partial_on_exhaustion": true
+    }
+  ],
+  "restart_policy": {
+    "after_exact_staging_receipt": "restart-same-source-from-next-checkpoint",
+    "confirm_prior_child_dead": true,
+    "prevent_overlap": true,
+    "preserve_checkpoints_and_receipts": true
+  },
+  "publication_policy": {
+    "separate_from_acquisition": true,
+    "one_serialized_writer": true,
+    "auto_restart_after_live_verification": true
+  }
+}

@@ -237,22 +237,83 @@ if the verified publication queue is left to grow without bound.
 
 ### Receipt-bound source transitions
 
-Source slots can transition cleanly after their current unit finishes. The
-practice model includes editable Open Library, Internet Archive, Plymouth
-Brethren, and Library of Congress placeholders and two example routes. It requires exact
-staging, cleanup, and checkpoint evidence before the old coordinator yields its
-slot; the successor cannot overlap it. A 1,000-item lane may stage a positive
+Source slots can transition cleanly after their current unit finishes. Set
+`source_slot_count` to 1–64 and provide the same number of ordered slot entries.
+The supplied practice model has ten editable direct-download sources and nine
+automatic transitions. It requires exact staging, cleanup, and checkpoint
+evidence before the old coordinator yields its slot; the successor cannot
+overlap it. A full unit restarts the same source, while proven exhaustion stages
+any positive remainder and advances. A 1,000-item lane may stage a positive
 partial unit only when its receipt proves that the bounded source is exhausted. See
 [`docs/SOURCE_TRANSITION_MODEL.md`](docs/SOURCE_TRANSITION_MODEL.md) and
 [`examples/source-transition.practice.json`](examples/source-transition.practice.json).
-The practice chain includes a generic next-large-public-source slot after
-Plymouth so deployments can preselect the next public corpus without coupling
-the transition engine to its acquisition adapter.
+The large Internet Archive-hosted slots reuse one proven public API and direct-
+download adapter with different collection queries; prior identifiers and
+content hashes are excluded across slots.
 
 The same practice configuration exposes an independent desired publication
 batch-size placeholder globally and per source. Acquisition may stage a larger
 unit while the one live writer publishes configured units from 1 through 1,000,
 including the positive final remainder, and live-verifies each before advancing.
+
+For a deliberately simpler deployment with no cross-source transition, use
+[`examples/source-pool.two-slot.json`](examples/source-pool.two-slot.json). It
+keeps exactly two continuous lanes—Open Library and Library of Congress—and
+restarts each same-source lane only after its exact staging receipt. The larger
+ten-slot model remains an optional reference for later source-pool testing.
+
+## Optional Tertiary Mode
+
+Tertiary Mode is a detachable, default-off observation field. It measures
+Nurture, Pivot, and Continuation context without issuing advice, selecting a
+route, opening or closing a gate, or starting or stopping a process. With the
+mode off, Sweeper follows the established execution path unchanged.
+
+The Inquisitive reader and Tertiary Adapter have independent toggles. The reader
+may inspect the field or ignore it. The adapter exposes the same neutral field
+to an existing host coordinator; it does not execute actions itself, and the
+host retains all decision authority. This separation lets deployments add
+context incrementally and detach it instantly without rewriting their working
+source, rollover, staging, or publication logic.
+
+The initial Nurture field uses deliberately simple measurement anchors: 50
+accepted members emits 10%, 100 emits 20%, 1,000 emits 50%, 2,000 emits 75%,
+and 10,000 emits 100%, with linear interpolation between anchors. This number
+is context, not authority. A host may use stronger Nurture context to preserve
+passing survivors, quarantine individual failures, stage a positive remainder,
+and resume from a checkpoint. It must never use the number to force corrupt,
+rights-uncertain, incomplete, duplicate, or unverified material through an
+integrity boundary.
+
+At staging-to-live, the adapter distinguishes an unchanged, hash-bound
+acquisition attestation from the two checks that must be fresh. Repeating
+rights, relevance, completeness, or full-text validation on unchanged membership
+is continuity friction; the live duplicate delta and deployment/live
+verification are fresh integrity boundaries. Nurture may help the host recognize
+the former, but never overrides the latter.
+
+Keep staging adapters stickman-simple: use one deterministic, idempotent write
+per artifact with bounded retry, then create and read back one exact membership
+receipt. Avoid separate existence and metadata round trips before every write;
+the final hash-bound readback is the authoritative proof.
+
+```bash
+# Inspect the default-off state.
+sweeper tertiary-mode --config sweeper.json
+
+# Enable observations and optional reading; execution remains unchanged.
+sweeper tertiary-mode --config sweeper.json --set on --inquisitive on
+sweeper tertiary-observe --config sweeper.json
+sweeper inquisitive-read --config sweeper.json
+
+# Attach/detach the neutral adapter view independently.
+sweeper tertiary-mode --config sweeper.json --adapter on
+sweeper tertiary-adapter --config sweeper.json
+sweeper tertiary-mode --config sweeper.json --adapter off
+
+# Restore the established model completely.
+sweeper tertiary-mode --config sweeper.json --set off
+```
 
 ## Nurture collections and survivor continuation
 

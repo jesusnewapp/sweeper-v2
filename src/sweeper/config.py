@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .model import Config, Policy, Source, Translation
+from .model import Config, Policy, Source, Tertiary, Translation
 
 
 MAX_PROJECT_TARGET = 100_000_000_000
@@ -39,6 +39,8 @@ def load_config(path: Path) -> Config:
         sources=sources,
         policy=Policy(**raw.get("policy", {})),
         translation=Translation(**raw.get("translation", {})),
+        tertiary=Tertiary(**raw.get("tertiary", {})),
+        engine_mode=str(raw.get("engine", {}).get("mode", "ultra")),
         nurture_threshold=int(raw.get("nurture", {}).get("threshold", 30)),
     )
     validate_config(config)
@@ -46,6 +48,15 @@ def load_config(path: Path) -> Config:
 
 
 def validate_config(config: Config) -> None:
+    allowed_tertiary_signals = {"nurture", "pivot", "continuation"}
+    if len(config.tertiary.signals) != len(set(config.tertiary.signals)):
+        raise ValueError("tertiary signals must be unique")
+    if any(signal not in allowed_tertiary_signals for signal in config.tertiary.signals):
+        raise ValueError("tertiary signals may contain only nurture, pivot, and continuation")
+    if config.tertiary.adapter_enabled and not config.tertiary.enabled:
+        raise ValueError("the tertiary adapter cannot be enabled while tertiary mode is off")
+    if config.engine_mode not in {"ultra", "dual", "v2"}:
+        raise ValueError("engine mode must be ultra, dual, or v2")
     if not config.project_name.strip():
         raise ValueError("project name cannot be empty")
     if not 1 <= config.nurture_threshold <= 10_000:
