@@ -41,6 +41,8 @@ void main() {
   testWidgets('desktop layout renders without overflow', (tester) async {
     await pumpAt(tester, const Size(1440, 1000));
     expect(find.text('Codex Live'), findsOneWidget);
+    expect(find.byKey(const ValueKey('refresh-ui-button')), findsOneWidget);
+    expect(find.text('Refresh UI'), findsOneWidget);
     expect(find.text('Readable text color:'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

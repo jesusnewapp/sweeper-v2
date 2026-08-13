@@ -267,7 +267,10 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     await _connect(quiet: true);
   }
 
-  Future<void> _connect({bool quiet = false}) async {
+  Future<void> _connect({
+    bool quiet = false,
+    bool resetUiObservations = false,
+  }) async {
     if (_connecting) return;
     setState(() {
       _connecting = true;
@@ -305,6 +308,11 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         _confirmedStaged =
             (payload['confirmedStaged'] as num?)?.toInt() ?? _confirmedStaged;
         if (parsedModels != null) {
+          if (resetUiObservations) {
+            _progressObservations.clear();
+            _stageObservations.clear();
+            _loggedProgressObservations.clear();
+          }
           _syncProgressObservations(parsedModels);
           _models = parsedModels;
           _hasLiveData = true;
@@ -483,10 +491,18 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Refresh status',
-            onPressed: _connecting ? null : _connect,
-            icon: const Icon(Icons.refresh_rounded),
+          TextButton.icon(
+            key: const ValueKey('refresh-ui-button'),
+            onPressed: _connecting
+                ? null
+                : () => _connect(resetUiObservations: true),
+            icon: _connecting
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 19),
+            label: const Text('Refresh UI'),
           ),
           const SizedBox(width: 6),
         ],
