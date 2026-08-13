@@ -65,6 +65,18 @@ python3 python/server.py \
 
 Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only in the device's application preferences and are not part of public source. For an internet-facing deployment, use a maintained TLS reverse proxy, firewall rules, token rotation, and a private network or VPN.
 
+The client retries its configured controller every five seconds even when its
+first cold-start request fails. A brief local-service outage may show preview
+placeholders, but it cannot strand the interface there; live counters restore
+automatically when the controller returns.
+
+For a long-running local desktop session, `python/supervise_controller.py`
+restarts the controller after any unexpected nonzero exit. Run it under the
+host's normal user-session supervisor so it retains the same filesystem access
+as the operator; do not bypass operating-system privacy controls. A deliberate
+clean server exit ends the supervisor, while a direct keyboard interrupt shuts
+down its child cleanly.
+
 ## Safety contract
 
 - Status is read from configured state/checkpoint/receipt files; a PID alone is not treated as progress.

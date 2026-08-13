@@ -177,7 +177,9 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       if (mounted) _tickObservations();
     });
     _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_hasLiveData && !_connecting) _connect(quiet: true);
+      // Cold-start failures must heal too. Requiring prior live data here
+      // trapped the interface in preview mode after a brief controller outage.
+      if (!_connecting) _connect(quiet: true);
     });
     _restoreConnection();
   }
