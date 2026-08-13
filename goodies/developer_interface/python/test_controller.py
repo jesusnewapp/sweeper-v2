@@ -8,6 +8,35 @@ from controller import SweeperController
 
 
 class ControllerTests(unittest.TestCase):
+    def test_discovery_checkpoint_growth_resets_progress_clock_without_acceptance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state_path = root / "state.json"
+            state = {
+                "status": "running",
+                "stage": "discovery",
+                "currentBatchSize": 2000,
+                "acceptedInCurrentBatch": 44,
+                "candidateOffset": 500,
+                "discoveryFrontier": 2,
+                "updatedAt": "2026-01-01T00:00:00Z",
+            }
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "name": "Source",
+                           "statePath": "state.json", "target": 2000}],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            first = controller.status()["lanes"][0]["progressSince"]
+            state["candidateOffset"] = 1000
+            state["updatedAt"] = "2026-01-01T00:01:00Z"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            second_lane = controller.status()["lanes"][0]
+            self.assertEqual(44, second_lane["accepted"])
+            self.assertNotEqual(first, second_lane["progressSince"])
+
     def test_status_reads_lane_without_inventing_live_counts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -128,6 +157,8 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(lane["liveVerified"], 0)
             self.assertIn("870 prepared", lane["detail"])
             self.assertIn("17 duplicates removed", lane["detail"])
+            self.assertEqual(0, lane["queueReady"])
+            self.assertIn("1 queued behind current", lane["detail"])
 
     def test_publisher_distinguishes_ready_from_parked_queue_units(self):
         with tempfile.TemporaryDirectory() as temporary:

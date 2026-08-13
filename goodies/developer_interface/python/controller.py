@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -48,6 +49,18 @@ def _count(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _progress_key(value: Dict[str, Any]) -> str:
+    """Bind the inactivity clock to every durable progress signal.
+
+    Accepted count is only one signal. A rate-limited discovery adapter may be
+    healthy while it advances query pages or candidate inventory without yet
+    accepting another item. Hashing the complete evidence vector prevents that
+    legitimate work from being mislabeled as a stalled lane.
+    """
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _publication_progress(root: Path) -> Dict[str, Any]:
@@ -182,6 +195,22 @@ class SweeperController:
             "detail": detail,
             "updatedAt": updated,
             "currentRoot": current_root,
+            "progressEvidence": {
+                "stage": stage,
+                "accepted": accepted,
+                "uploaded": uploaded,
+                "discovered": _count(_first(checkpoint, ("discovered", "discoveredCount"),
+                                           _first(state, ("discovered", "discoveredCount"), 0))),
+                "prefiltered": _count(_first(checkpoint, ("prefiltered", "prefilteredCount"),
+                                            _first(state, ("prefiltered", "prefilteredCount"), 0))),
+                "candidateInventory": _count(_first(
+                    state, ("sourceCandidateInventory", "candidateInventory", "candidateCount"), 0)),
+                "candidateOffset": _count(_first(state, ("candidateOffset", "cursor", "page"), 0)),
+                "discoveryFrontier": _count(_first(state, ("discoveryFrontier", "frontier"), 0)),
+                "stateUpdatedAt": state.get("updatedAt", ""),
+                "checkpointUpdatedAt": state_updated,
+                "uploadUpdatedAt": progress_updated,
+            },
         }
 
     def _publisher_lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
@@ -250,6 +279,9 @@ class SweeperController:
         parked_units = _count(queue.get("parkedUnchanged"))
         preflight_units = _count(queue.get("bookkeptPreflight"))
         ready_units = max(0, pending_units - parked_units - preflight_units)
+        queued_behind_current = ready_units if current else 0
+        if current:
+            ready_units = 0
         if not current:
             stage = (
                 "Ready for next exact staged unit"
@@ -274,7 +306,8 @@ class SweeperController:
             "detail": (
                 f"{accepted} prepared · {duplicate_removed} duplicates removed · "
                 f"{uploaded} uploaded · {published} published · {verified} live-verified · "
-                f"{ready_units} ready · {parked_units} parked · {preflight_units} preflight"
+                f"{queued_behind_current} queued behind current · "
+                f"{parked_units} parked · {preflight_units} preflight"
                 if current else
                 f"Last completed: {last_published} published · {last_verified} live-verified · "
                 f"{ready_units} ready · {parked_units} parked · {preflight_units} preflight"
@@ -292,6 +325,20 @@ class SweeperController:
             )
             if current_root
             else 0,
+            "progressEvidence": {
+                "stage": stage,
+                "currentRoot": current_root,
+                "prepared": accepted,
+                "duplicatesRemoved": duplicate_removed,
+                "uploaded": uploaded,
+                "published": published,
+                "liveVerified": verified,
+                "pendingUnits": pending_units,
+                "parkedUnits": parked_units,
+                "preflightUnits": preflight_units,
+                "watcherCheckedAt": state.get("checkedAt", ""),
+                "unitUpdatedAt": updated,
+            },
         }
 
     def _metrics(self) -> Dict[str, Any]:
@@ -311,9 +358,8 @@ class SweeperController:
             if lane_id in active_ids
         }
         for lane in lanes:
-            target = int(lane.get("target", 0) or 0)
-            progress = min(1.0, int(lane.get("accepted", 0) or 0) / target) if target else 0.0
-            key = round(progress * 1000)
+            evidence = lane.pop("progressEvidence", {})
+            key = _progress_key(evidence)
             lane_id = str(lane["id"])
             observation = self._progress_observations.get(lane_id)
             if observation is None or observation["key"] != key:

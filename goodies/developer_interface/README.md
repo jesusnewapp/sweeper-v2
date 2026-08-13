@@ -11,8 +11,8 @@ It includes:
 - green, yellow, orange, and red lane states;
 - a color-coded `Gate X/Y · Ns` sweep signal on every lane (six acquisition gates and seven publisher gates);
 - exact counters that refresh independently from the gate timer;
-- an elapsed timer after any displayed progress percentage remains unchanged for 10 seconds;
-- a per-lane Push control that remains disabled until five minutes without counter movement, then invokes only the host-configured trusted `push` action;
+- an elapsed timer after the complete durable progress vector remains unchanged for 10 seconds;
+- a per-lane Push control that remains disabled until five minutes without any progress evidence, then invokes only the host-configured trusted `push` action;
 - a four-pad waiting game with a persistent high score and one-time round-20 message;
 - one serialized production-writer invariant.
 
@@ -68,6 +68,9 @@ Enter that HTTPS URL and token in the Android or iOS app. Tokens are stored only
 ## Safety contract
 
 - Status is read from configured state/checkpoint/receipt files; a PID alone is not treated as progress.
+- Inactivity is multi-signal: accepted, discovery-page/cursor, candidate-inventory,
+  stage, upload, publication, verification, checkpoint timestamp, and receipt
+  movement all count. A quiet accepted counter cannot terminate active discovery.
 - Production publishing remains limited to one serialized writer.
 - UI actions invoke only host-configured commands and cannot accept shell text from the client.
 - Actions are disabled by default in the public example.

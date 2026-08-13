@@ -161,16 +161,16 @@ sweeper plan --config codex-sweeper.json
 sweeper pivot-enforcer --config codex-sweeper.json --watch --poll-seconds 10
 ```
 
-The optional Pivot Enforcer applies one universal accountability rule: a lane
-that shows no changed progress evidence for 60 seconds must pivot. It never
-chooses the pivot; the source or translator adapter remains free to select its
-best safe continuation. `pivot-enforcer.json` records pending and overdue
-obligations, and a one-shot command exits with status 2 when an adapter owes a
-pivot. Supervisors can use that status to recycle a runner from its checkpoint.
-Rights, quality, staging, validation, and live-writer rules remain unchanged.
-Daemon mode runs this evaluation every minute automatically. Operators may also
-run `sweeper pivot-enforcer --watch` as a separate watchdog so evaluation remains
-independent while a long-running adapter is busy.
+The optional Pivot Enforcer is an accountability observer, not an elapsed-time
+kill switch. Source adapters define a durable progress vector appropriate to the
+source: accepted items, discovery pages or cursors, candidate inventory, stage
+transitions, uploads, verifications, checkpoints, and exact receipts may all
+prove movement. A quiet accepted counter alone is never exhaustion and never
+authorizes terminating active discovery. Only the absence of every configured
+signal outside a known long operation can create an overdue pivot obligation.
+The enforcer never chooses the pivot; the adapter remains free to select its
+best safe continuation. Rights, quality, staging, validation, and live-writer
+rules remain unchanged.
 
 Loading refuses to overwrite an existing configuration. This keeps saved
 projects reusable without silently destroying current work.
@@ -207,7 +207,11 @@ The simplest reliable source loop is prepare → stage exact survivors → persi
 the outcome → immediately begin the next unit. Individual duplicates and failed
 members are bookkept and quarantined without stopping valid survivors. A depleted
 page or cursor window advances inside the same coordinator; it is not treated as
-a completed source or a reason to wait for an external restart.
+a completed source or a reason to wait for an external restart. Do not infer
+source or collection exhaustion from a timer. Exhaustion requires the configured
+deterministic frontier to finish with no unvisited query pages, cursors, or
+records. Rate-limited discovery may hold its accepted count steady while its
+page checkpoint and candidate inventory continue to grow.
 
 Track successful automatic advances separately from manual restarts,
 monitor-triggered recoveries, and crash recoveries. Operators select each
