@@ -43,6 +43,44 @@ governments, developers, and responsible independent users.**
 > **$7.5 million**. This system-generated estimate is not an independent
 > appraisal, investment offer, or guarantee. Happy downloading.
 
+## Build major institutional knowledge collections
+
+Web Sweeper can help an authorized operator build enormous, provenance-bound
+digital libraries, evidence repositories, research vaults, archives, or
+knowledge bases for a business or institution. A mature collection may carry
+more than **$10 million in strategic, research, replacement, or operational
+value** for the right institution when its lawful content, coverage, quality,
+governance, interface, adoption, and ongoing maintenance justify that value.
+This is a statement of potential utility, not a promised sale price, revenue
+forecast, or appraisal.
+
+Examples include:
+
+1. A licensed, privacy-protected medical case-study library for hospitals and medical schools.
+2. An open clinical-trial evidence repository for treatment and research review.
+3. A public-health literature and epidemiology archive for health agencies.
+4. A drug-safety, adverse-event, and regulatory-evidence knowledge base.
+5. A legal-opinion and public-court-record research library for law schools or firms.
+6. A government regulation, guidance, and policy-history repository.
+7. A patent, prior-art, and public technical-disclosure research collection.
+8. An authorized engineering standards and safety-incident knowledge base.
+9. An open-access scientific article and reproducible-research library.
+10. A climate, weather, and environmental-observation data archive.
+11. An agricultural research, crop-disease, and food-security repository.
+12. An open educational-resource library for universities and school systems.
+13. A theology, Scripture, sermon, and Christian-history digital library.
+14. A public-domain historical newspaper and periodical archive.
+15. A government document, hearing, report, and public-record collection.
+16. A public-company filing and economic-research knowledge base.
+17. A cybersecurity advisory, vulnerability, and defensive-research repository.
+18. An open-source software, documentation, and release-preservation archive.
+19. A geospatial, mapping, land-use, and civic-planning data library.
+20. A biodiversity, conservation, and natural-history research repository.
+
+Every deployment remains subject to source licenses, privacy rules, access
+controls, data-protection law, professional oversight, and the operator's own
+authorization. Sweeper does not turn restricted information into public data.
+
 Christian “Chris” Cassarly originally developed Sweeper for Jesus New OS and is
 now offering the framework publicly. He is using its architecture in pursuit of
 a one-million-book Codex goal within a year. At institutional scale, an authorized
