@@ -73,8 +73,17 @@ def canonical_acceptance_receipt(workspace: Path, source: str,
     if import_path.exists():
         path = import_path
         report = json.loads(path.read_text(encoding="utf-8"))
+        reported_count = _acceptance_count(report)
+        delta_path = workspace / "staging_delta_quarantine.json"
+        delta = json.loads(delta_path.read_text(encoding="utf-8")) if delta_path.exists() else {}
+        exact_duplicate_remainder = (
+            reported_count > expected_count
+            and delta.get("action") == "quarantine-duplicates-and-continue"
+            and int(delta.get("survivors", -1)) == expected_count
+            and len(delta.get("quarantined", [])) == reported_count - expected_count
+        )
         if (str(report.get("source", "")) != source or
-                _acceptance_count(report) != expected_count):
+                (reported_count != expected_count and not exact_duplicate_remainder)):
             raise ValueError("import report does not bind the exact accepted source unit")
         kind = "import-report"
     elif validation_path.exists():
@@ -88,7 +97,7 @@ def canonical_acceptance_receipt(workspace: Path, source: str,
         kind = "validation-report"
     else:
         raise ValueError("canonical source acceptance receipt is missing")
-    return {
+    result = {
         "schemaVersion": 1,
         "source": source,
         "accepted": expected_count,
@@ -96,6 +105,13 @@ def canonical_acceptance_receipt(workspace: Path, source: str,
         "receiptKind": kind,
         "receiptSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
+    if import_path.exists() and reported_count != expected_count:
+        result.update({
+            "postAcquisitionDuplicateDelta": reported_count - expected_count,
+            "duplicateDeltaReceipt": delta_path.name,
+            "duplicateDeltaReceiptSha256": hashlib.sha256(delta_path.read_bytes()).hexdigest(),
+        })
+    return result
 
 
 def migrate_legacy_staging_verification(workspace: Path,

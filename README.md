@@ -310,8 +310,9 @@ including the positive final remainder, and live-verifies each before advancing.
 
 For a deliberately simpler deployment with no cross-source transition, use
 [`examples/source-pool.two-slot.json`](examples/source-pool.two-slot.json). It
-keeps exactly two continuous lanes—Open Library and Library of Congress—and
-restarts each same-source lane only after its exact staging receipt. The larger
+keeps exactly two isolated continuous Open Library lanes with different query
+profiles—broad Christian works and a ten-query Christian-stories pool—and
+restarts each lane only after its exact staging receipt. The larger
 ten-slot model remains an optional reference for later source-pool testing.
 
 ## Optional Tertiary Mode

@@ -50,7 +50,8 @@ def navigation_index(queries: tuple[str, ...], current_index: int,
     return index, "candidate-growth-active"
 
 
-def staged_pool_plan(units: Iterable[StagedUnit], minimum_share: float = 0.5) -> dict:
+def staged_pool_plan(units: Iterable[StagedUnit], minimum_share: float = 0.5,
+                     minimum_publication_books: int = 500) -> dict:
     """Schedule largest exact units first and record a minimum book target.
 
     The plan never merges units. Consumers retain each unit's hashes and
@@ -58,13 +59,27 @@ def staged_pool_plan(units: Iterable[StagedUnit], minimum_share: float = 0.5) ->
     """
     if not 0 < minimum_share <= 1:
         raise ValueError("minimum share must be greater than zero and at most one")
+    if minimum_publication_books < 1:
+        raise ValueError("minimum publication books must be positive")
     ordered = sorted((unit for unit in units if unit.books > 0),
                      key=lambda unit: (-unit.books, unit.unit_id))
     total = sum(unit.books for unit in ordered)
+    minimum_cycle = min(total, max(ceil(total * minimum_share),
+                                   minimum_publication_books))
+    selected: list[StagedUnit] = []
+    selected_books = 0
+    for unit in ordered:
+        if selected_books >= minimum_cycle:
+            break
+        selected.append(unit)
+        selected_books += unit.books
     return {
         "units": ordered,
+        "selectedUnits": selected,
+        "selectedBooks": selected_books,
         "pendingBooks": total,
-        "minimumCycleBooks": ceil(total * minimum_share),
+        "minimumCycleBooks": minimum_cycle,
+        "minimumAutomaticPublicationBooks": minimum_publication_books,
         "minimumPoolSharePercent": round(minimum_share * 100, 2),
         "serializedWriterRequired": True,
     }

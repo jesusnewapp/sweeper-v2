@@ -6,22 +6,30 @@
   "source_slots": [
     {
       "slot": 1,
-      "id": "open-library",
+      "id": "open-library-broad-christian",
       "mode": "continuous-same-source-restart",
       "acquisition_target": 2000,
       "workers": 2,
       "minimum_free_gib": 1,
       "launch_command": ["REPLACE_WITH_OPEN_LIBRARY_DIRECT_DOWNLOAD_ADAPTER"],
+      "query_profile": "broad-christian",
       "allow_partial_on_exhaustion": true
     },
     {
       "slot": 2,
-      "id": "library-of-congress",
+      "id": "open-library-christian-stories",
       "mode": "continuous-same-source-restart",
       "acquisition_target": 2000,
       "workers": 2,
       "minimum_free_gib": 1,
-      "launch_command": ["REPLACE_WITH_LOC_DIGITIZED_BOOKS_DIRECT_DOWNLOAD_ADAPTER"],
+      "launch_command": ["REPLACE_WITH_OPEN_LIBRARY_DIRECT_DOWNLOAD_ADAPTER"],
+      "query_profile": "christian-stories",
+      "navigation_queries": [
+        "Christian stories", "Christian biography", "Bible stories",
+        "Christian allegory", "Missionary stories", "Saints and church heroes",
+        "Bible history narratives", "Christian testimony",
+        "Church history stories", "Devotional narratives"
+      ],
       "allow_partial_on_exhaustion": true
     }
   ],
@@ -34,6 +42,8 @@
   "publication_policy": {
     "separate_from_acquisition": true,
     "one_serialized_writer": true,
-    "auto_restart_after_live_verification": true
+    "auto_restart_after_live_verification": true,
+    "largest_exact_units_first": true,
+    "minimum_cycle_books_when_available": 500
   }
 }

@@ -29,7 +29,19 @@ class NavigationTest(unittest.TestCase):
                          [unit.unit_id for unit in plan["units"]])
         self.assertEqual(2182, plan["pendingBooks"])
         self.assertEqual(1091, plan["minimumCycleBooks"])
+        self.assertEqual(["current-1981"],
+                         [unit.unit_id for unit in plan["selectedUnits"]])
         self.assertTrue(plan["serializedWriterRequired"])
+
+    def test_staged_pool_does_not_choose_a_tiny_root_before_large_backlog(self):
+        plan = staged_pool_plan([
+            StagedUnit("tiny-5", 5), StagedUnit("large-499", 499),
+            StagedUnit("remainder-102", 102),
+        ])
+        self.assertEqual(500, plan["minimumCycleBooks"])
+        self.assertEqual(["large-499", "remainder-102"],
+                         [unit.unit_id for unit in plan["selectedUnits"]])
+        self.assertEqual(601, plan["selectedBooks"])
 
 
 if __name__ == "__main__":

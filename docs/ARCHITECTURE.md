@@ -10,7 +10,10 @@ query changes.
 Production consumers keep exact staged units separate and use one serialized
 writer. When scheduling a backlog, the largest exact units run first and the
 cycle records a minimum target of 50% of the eligible staged-book pool present
-at cycle start. This target changes scheduling only; it never bypasses hashes,
+at cycle start, with a 500-book floor whenever that many staged books are
+available. The planner selects enough largest exact units to meet that target;
+it never chooses a tiny remainder ahead of a larger ready unit. This target
+changes scheduling only; it never bypasses hashes,
 duplicate screening, publication receipts, or live verification.
 
 Web Sweeper separates four responsibilities:

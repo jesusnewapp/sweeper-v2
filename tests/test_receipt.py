@@ -78,6 +78,30 @@ class RestartableReceiptTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exact accepted source unit"):
                 canonical_acceptance_receipt(root, "Open Library", 1442)
 
+    def test_exact_staging_duplicate_remainder_keeps_every_survivor_moving(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "import_report.json").write_text(json.dumps({
+                "source": "Open Library", "prepared": 500,
+            }), encoding="utf-8")
+            (root / "staging_delta_quarantine.json").write_text(json.dumps({
+                "action": "quarantine-duplicates-and-continue",
+                "survivors": 499,
+                "quarantined": [{"id": "duplicate-one"}],
+            }), encoding="utf-8")
+            evidence = canonical_acceptance_receipt(root, "Open Library", 499)
+            self.assertEqual(499, evidence["accepted"])
+            self.assertEqual(1, evidence["postAcquisitionDuplicateDelta"])
+
+    def test_unaccounted_count_reduction_remains_blocked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "import_report.json").write_text(json.dumps({
+                "source": "Open Library", "prepared": 500,
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact accepted source unit"):
+                canonical_acceptance_receipt(root, "Open Library", 499)
+
     def test_validator_first_adapter_is_not_blocked_by_report_filename(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

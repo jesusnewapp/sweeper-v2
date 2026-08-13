@@ -155,6 +155,7 @@ class SweeperController:
     def _source_success_history(self, lane_id: str) -> List[Dict[str, Any]]:
         prefix = {
             "open-library": "open_library_",
+            "open-library-stories": "open_library_christian_stories_",
             "library-of-congress": "library_of_congress_",
         }.get(lane_id)
         if not prefix:
