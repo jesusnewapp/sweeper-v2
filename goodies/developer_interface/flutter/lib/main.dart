@@ -129,20 +129,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     }
     if (index == 1) {
       return ModelSlotDraft(
-        name: 'Library of Congress',
-        connector: 'https://www.loc.gov/apis/',
-        navigationQueries: const [
-          'Sermons, English',
-          'Bible commentaries',
-          'Theology, Doctrinal',
-          'Christian stories',
-          'Devotional literature',
-          'Christian biography',
-          'Church history',
-          'Missions',
-          'Christian education',
-          'Religious poetry, English',
-        ],
+        name: 'Open Library 2',
+        connector: 'https://openlibrary.org/developers/api',
       );
     }
     return ModelSlotDraft();
