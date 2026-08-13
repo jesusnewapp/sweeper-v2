@@ -32,3 +32,11 @@ records remain independently searchable even when they share an ID.
 The [`ui/`](ui/) folder is a dependency-free interface starter. Export the
 index to `ui/index.json`, serve the folder with any static web server, and adapt
 the colors, record links, fields, or backend integration to the project.
+
+For a polished, connector-ready interface, use [`User Interface/`](User%20Interface/).
+It includes a dependency-free Python server/browser UI and a Flutter mobile app
+with the same staged/live record contract, advanced title/author/date/category/
+custom-field inquiry, and media adapters for web and JSON readers, text, images,
+audio, video, ROM-player handoff, and future operator-defined formats. Point it
+at Web Sweeper exports, a local hard drive or server, an HTTPS gateway, or a
+Firebase Cloud Function. It is read-only and never promotes staging to live.
