@@ -132,6 +132,35 @@ class ControllerTests(unittest.TestCase):
             self.assertIn("progressSince", status["lanes"][0])
             self.assertEqual(status["productionWriterLimit"], 1)
 
+    def test_status_uses_newer_authoritative_accepted_journal_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_001"
+            unit.mkdir()
+            (unit / "checkpoint.json").write_text(
+                json.dumps({"acceptedCount": 1}), encoding="utf-8"
+            )
+            with (unit / "progress.jsonl").open("w", encoding="utf-8") as journal:
+                journal.write(json.dumps({"kind": "accepted", "id": "one"}) + "\n")
+                journal.write(json.dumps({"kind": "rejected", "id": "two"}) + "\n")
+                journal.write(json.dumps({"kind": "accepted", "id": "three"}) + "\n")
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "prepare", "currentRoot": str(unit),
+                "currentBatchSize": 2000,
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            lane = controller.status()["lanes"][0]
+            self.assertEqual(2, lane["accepted"])
+            self.assertEqual(2, lane["modeDetail"]["acceptedJournalCount"])
+            with (unit / "progress.jsonl").open("a", encoding="utf-8") as journal:
+                journal.write(json.dumps({"kind": "accepted", "id": "four"}) + "\n")
+            self.assertEqual(3, controller.status()["lanes"][0]["accepted"])
+
     def test_unconfigured_actions_are_disabled(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

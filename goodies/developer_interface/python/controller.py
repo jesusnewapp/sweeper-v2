@@ -147,6 +147,7 @@ class SweeperController:
         self._progress_observations: Dict[str, Dict[str, Any]] = {}
         self._stage_observations: Dict[str, Dict[str, Any]] = {}
         self._progress_file_samples: Dict[str, Dict[str, Any]] = {}
+        self._decision_journal_samples: Dict[str, Dict[str, Any]] = {}
 
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()
@@ -238,6 +239,42 @@ class SweeperController:
         }
         return dict(value)
 
+    def _accepted_journal_count(self, path: Path) -> tuple[int, Optional[datetime]]:
+        """Incrementally count durable accepted decisions in an append-only journal."""
+        key = str(path)
+        try:
+            metadata = path.stat()
+        except OSError:
+            return 0, None
+        cached = self._decision_journal_samples.get(key, {})
+        same_file = cached.get("inode") == metadata.st_ino
+        offset = int(cached.get("offset", 0)) if same_file else 0
+        accepted = int(cached.get("accepted", 0)) if same_file else 0
+        if metadata.st_size < offset:
+            offset = 0
+            accepted = 0
+        try:
+            with path.open("rb") as journal:
+                journal.seek(offset)
+                for raw in journal:
+                    if not raw.endswith(b"\n"):
+                        break
+                    offset += len(raw)
+                    try:
+                        if json.loads(raw).get("kind") == "accepted":
+                            accepted += 1
+                    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                        continue
+        except OSError:
+            return accepted, None
+        self._decision_journal_samples[key] = {
+            "inode": metadata.st_ino,
+            "offset": offset,
+            "accepted": accepted,
+        }
+        observed = datetime.fromtimestamp(metadata.st_mtime, timezone.utc)
+        return accepted, observed
+
     def _lane(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         if definition.get("kind") == "publisher":
             return self._publisher_lane(definition)
@@ -266,6 +303,13 @@ class SweeperController:
         )
         if isinstance(state.get("membershipReconciliation"), dict) and not accepted:
             accepted = _count(state["membershipReconciliation"].get("catalogMembers"))
+        journal_accepted = 0
+        journal_observed: Optional[datetime] = None
+        if current_root:
+            journal_accepted, journal_observed = self._accepted_journal_count(
+                Path(current_root) / "progress.jsonl"
+            )
+            accepted = max(accepted, journal_accepted)
         if current_root and checkpoint_path is not None and not checkpoint_path.exists():
             # A newly advanced batch has no accepted membership yet. Never
             # carry the completed prior batch's reconciliation count into it.
@@ -309,7 +353,8 @@ class SweeperController:
             except (OSError, TypeError):
                 supplemental_progress.append({"path": str(value), "missing": True})
         observed_candidates = [value for value in (
-            state_observed, progress_observed, supplemental_observed) if value is not None]
+            state_observed, progress_observed, supplemental_observed, journal_observed
+        ) if value is not None]
         observed = max(observed_candidates) if observed_candidates else None
         updated = observed.isoformat().replace("+00:00", "Z") if observed else state_updated
         age = (datetime.now(timezone.utc) - observed).total_seconds() if observed else None
@@ -369,6 +414,7 @@ class SweeperController:
             "navigationQueries": navigation.get("queries", []),
             "navigationStatus": str(navigation.get("status", "")),
             "checkpointUpdatedAt": state_updated,
+            "acceptedJournalCount": journal_accepted,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
