@@ -297,6 +297,12 @@ per artifact with bounded retry, then create and read back one exact membership
 receipt. Avoid separate existence and metadata round trips before every write;
 the final hash-bound readback is the authoritative proof.
 
+For large units, `RestartableStagingReceipt` checkpoints each successful exact
+readback atomically. A timeout or process exit resumes from the last verified
+member rather than replaying the unit. The progress file has no admission power;
+the small `dock-staging.json` receipt appears atomically only after the entire
+membership is verified.
+
 ```bash
 # Inspect the default-off state.
 sweeper tertiary-mode --config sweeper.json
