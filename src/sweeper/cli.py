@@ -20,6 +20,7 @@ from .enforcer import enforce
 from .activity import report as activity_report
 from .activity import record as activity_record
 from .tertiary import adapter_view, inquisitive_read, observe as tertiary_observe
+from .bridge import decision as bridge_decision
 
 
 EXAMPLE = {
@@ -30,6 +31,7 @@ EXAMPLE = {
     "engine": {"mode": "ultra"},
     "tertiary": {"enabled": False, "inquisitive_enabled": False,
         "adapter_enabled": False, "signals": ["nurture", "pivot", "continuation"]},
+    "bridge": {"enabled": False, "nurture_threshold_percent": 50.0},
     "layout": {"major_slots": 2, "minor_slots": 2},
     "policy": {
         "languages": ["en"], "licenses": ["PUBLIC-DOMAIN", "CC0-1.0", "CC-BY-4.0"],
@@ -177,6 +179,12 @@ def main() -> int:
     tertiary_mode.add_argument("--set", dest="selected", choices=("on", "off"))
     tertiary_mode.add_argument("--adapter", choices=("on", "off"))
     tertiary_mode.add_argument("--inquisitive", choices=("on", "off"))
+    bridge_switch = sub.add_parser("bridge-switch")
+    bridge_switch.add_argument("--config", type=Path, default=Path("sweeper.json"))
+    bridge_switch.add_argument("--set", dest="selected", choices=("on", "off"))
+    bridge_switch.add_argument("--threshold", type=float)
+    bridge_switch.add_argument("--accepted", type=int, default=0)
+    bridge_switch.add_argument("--target", type=int, default=1)
     for name in ("tertiary-observe", "tertiary-adapter", "inquisitive-read"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, default=Path("sweeper.json"))
@@ -297,6 +305,23 @@ def main() -> int:
             "adapterEnabled": config.tertiary.adapter_enabled,
             "legacyExecutionPathWhenOff": True,
             "tertiaryAuthority": "none"}, indent=2)); return 0
+    if args.command == "bridge-switch":
+        path = args.config.resolve()
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        bridge = raw.setdefault("bridge", {"enabled": False, "nurture_threshold_percent": 50.0})
+        if args.selected:
+            bridge["enabled"] = args.selected == "on"
+        if args.threshold is not None:
+            if not 0 <= args.threshold <= 100:
+                raise SystemExit("bridge threshold must be between 0 and 100")
+            bridge["nurture_threshold_percent"] = args.threshold
+        if args.selected or args.threshold is not None:
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+            temporary.replace(path)
+        print(json.dumps(bridge_decision(
+            args.accepted, args.target, bool(bridge.get("enabled")),
+            float(bridge.get("nurture_threshold_percent", 50.0))), indent=2)); return 0
     if args.command == "tertiary-observe":
         print(json.dumps(tertiary_observe(load_config(args.config.resolve())), indent=2)); return 0
     if args.command == "inquisitive-read":

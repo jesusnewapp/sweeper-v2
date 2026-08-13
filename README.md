@@ -303,6 +303,17 @@ member rather than replaying the unit. The progress file has no admission power;
 the small `dock-staging.json` receipt appears atomically only after the entire
 membership is verified.
 
+The optional bridge switch is default-off and activates only when its nurture
+score reaches the configured threshold (50% by default). It may skip repeated
+acquisition review for an unchanged exact staging membership; it never skips
+the live duplicate delta, serialized writer, or live verification.
+
+```bash
+sweeper bridge-switch --config sweeper.json --set on --threshold 50 \
+  --accepted 500 --target 1000
+sweeper bridge-switch --config sweeper.json --set off
+```
+
 ```bash
 # Inspect the default-off state.
 sweeper tertiary-mode --config sweeper.json
