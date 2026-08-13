@@ -313,6 +313,15 @@ member rather than replaying the unit. The progress file has no admission power;
 the small `dock-staging.json` receipt appears atomically only after the entire
 membership is verified.
 
+Older adapters may have named that same proof `staging_verification.json`.
+`migrate_legacy_staging_verification` converts it without another upload only
+when prepared, staged, and verified counts all equal the expected membership,
+production was not mutated, and remote bytes were verified identical. Any
+missing or mismatched field remains ineligible. A publisher supervisor should
+also wait for an already-running serialized writer to finish before restarting
+its listener; this makes continuation automatic without overlapping writers or
+replaying a live unit.
+
 The optional bridge switch is default-off and activates only when its nurture
 score reaches the configured threshold (50% by default). It may skip repeated
 acquisition review for an unchanged exact staging membership; it never skips

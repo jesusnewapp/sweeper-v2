@@ -3,10 +3,44 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sweeper.receipt import RestartableStagingReceipt, canonical_acceptance_receipt
+from sweeper.receipt import (
+    RestartableStagingReceipt,
+    canonical_acceptance_receipt,
+    migrate_legacy_staging_verification,
+)
 
 
 class RestartableReceiptTests(unittest.TestCase):
+    def test_exact_legacy_verification_migrates_without_reupload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "staging_verification.json").write_text(json.dumps({
+                "verifiedAt": "2026-08-11T00:00:00Z",
+                "prepared": 42,
+                "staged": 42,
+                "verified": 42,
+                "productionMutated": False,
+                "byteIdenticalToValidatedLocalArtifacts": True,
+            }), encoding="utf-8")
+            receipt = migrate_legacy_staging_verification(root, 42)
+            self.assertEqual(42, receipt["staged"])
+            self.assertEqual("legacy-exact-remote-readback", receipt["verification"])
+            self.assertTrue((root / "dock-staging.json").exists())
+
+    def test_inexact_legacy_verification_never_migrates(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "staging_verification.json").write_text(json.dumps({
+                "prepared": 42,
+                "staged": 42,
+                "verified": 41,
+                "productionMutated": False,
+                "byteIdenticalToValidatedLocalArtifacts": True,
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "not an exact isolated set"):
+                migrate_legacy_staging_verification(root, 42)
+            self.assertFalse((root / "dock-staging.json").exists())
+
     def test_importer_prepared_survivor_count_is_an_exact_acceptance_alias(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

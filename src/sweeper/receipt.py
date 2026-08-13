@@ -66,6 +66,35 @@ def canonical_acceptance_receipt(workspace: Path, source: str,
     }
 
 
+def migrate_legacy_staging_verification(workspace: Path,
+                                        expected_count: int) -> dict:
+    """Create a modern receipt only from exact isolated legacy readback."""
+    if expected_count < 1:
+        raise ValueError("a positive expected count is required")
+    verification_path = workspace / "staging_verification.json"
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+    if not (
+        int(verification.get("prepared", -1)) == expected_count
+        and int(verification.get("staged", -1)) == expected_count
+        and int(verification.get("verified", -1)) == expected_count
+        and verification.get("productionMutated") is False
+        and verification.get("byteIdenticalToValidatedLocalArtifacts") is True
+    ):
+        raise ValueError("legacy staging verification is not an exact isolated set")
+    receipt = {
+        "schemaVersion": 1,
+        "verifiedAt": verification.get("verifiedAt") or _now(),
+        "staged": expected_count,
+        "passed": True,
+        "production_mutated": False,
+        "verification": "legacy-exact-remote-readback",
+        "stagingVerificationSha256": hashlib.sha256(
+            verification_path.read_bytes()).hexdigest(),
+    }
+    _atomic_json(workspace / "dock-staging.json", receipt)
+    return receipt
+
+
 class RestartableStagingReceipt:
     """Checkpoint exact readback without exposing a premature receipt.
 
