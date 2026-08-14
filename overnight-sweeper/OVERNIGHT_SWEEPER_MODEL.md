@@ -204,3 +204,11 @@ Report these states separately:
 
 Never describe a staging upload as verified or published without evidence from
 the separate workflow responsible for those states.
+
+Exhausting every configured query collection proves only discovery-vocabulary
+exhaustion, not depletion of a large source. Preserve the unfinished root and
+prior-screening memory, extend the registered frontier with bounded precise
+Christian query families inside the same source boundary, and resume with one
+coordinator. Keep all rights, relevance, completeness, language, identity, and
+duplicate gates unchanged. Health is restored only when authoritative accepted
+membership increases.
