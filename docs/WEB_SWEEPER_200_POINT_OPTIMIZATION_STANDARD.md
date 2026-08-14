@@ -27,8 +27,6 @@ a bounded, inode/size/mtime-nanosecond cache. Atomic replacements invalidate the
 entry immediately, deleted or malformed files fail closed, and the cache evicts
 old entries after 2,048 paths.
 
-Each controller response declares `workspace` as `web_sweeper` or
-`world_books`. The UI validates this identity before rendering cards and
-repairs a stale saved endpoint once against the canonical local controller.
-This prevents regular acquisition lanes from appearing under a World header (or
-the reverse) after a restart or workspace switch.
+Each controller response declares its `web_sweeper` workspace identity. Clients
+validate that identity before rendering cards and repair a stale saved endpoint
+once against the canonical local controller.

@@ -298,7 +298,7 @@ class SweeperV2Test(unittest.TestCase):
             self.assertEqual(2, result["counts"]["accepted"])
             self.assertFalse(result["continuationRequired"])
 
-    def test_translation_bridge_has_world_books_languages_and_fails_closed(self):
+    def test_translation_bridge_has_supported_languages_and_fails_closed(self):
         self.assertGreaterEqual(len(LANGUAGES), 25)
         for language in ("fr", "pl", "nl", "de", "es", "ja", "zh", "la"):
             self.assertIn(language, LANGUAGES)
