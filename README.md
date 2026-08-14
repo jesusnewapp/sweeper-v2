@@ -4,6 +4,10 @@
   <img src="assets/sweeper-logo.png" alt="Sweeper logo: a cybernetic sweeper organizing a stream of data" width="520">
 </p>
 
+## Capability valuation
+
+Codex reviewed the operating Web Sweeper system with Christian "Chris" Cassarly and published a capability-weighted assessment covering its current valuation, AI and research-library uses, evidence, assumptions, and limitations. Read the [Web Sweeper capability valuation](docs/CAPABILITY_VALUATION.md).
+
 Sweeper V2 is a lightweight, source-neutral framework for continuously acquiring and
 preserving large information collections with reproducible provenance. It can
 be configured for institutional archives, law, science, research datasets,
