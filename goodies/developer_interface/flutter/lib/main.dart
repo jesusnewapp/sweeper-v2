@@ -439,6 +439,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             (model) => model.id == laneId,
             orElse: () => _models.first,
           );
+    final requestedLane = laneId == 'fleet' ? 'fleet' : selected.id;
     try {
       final base = _endpoint.endsWith('/')
           ? _endpoint.substring(0, _endpoint.length - 1)
@@ -450,14 +451,23 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
               'Content-Type': 'application/json',
               if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
             },
-            body: jsonEncode({'action': action, 'lane': selected.id}),
+            body: jsonEncode({'action': action, 'lane': requestedLane}),
           )
           .timeout(const Duration(seconds: 8));
       if (!mounted) return;
       if (response.statusCode == 202 || response.statusCode == 200) {
         _notice(
-          '${action[0].toUpperCase()}${action.substring(1)} request accepted for ${selected.name}',
+          '${action[0].toUpperCase()}${action.substring(1)} request accepted for '
+          '${requestedLane == 'fleet' ? 'both Web Sweeper models' : selected.name}',
         );
+        if (action == 'clean-sweep') {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          await _connect(
+            quiet: true,
+            resetUiObservations: true,
+            forceNetwork: true,
+          );
+        }
       } else {
         _notice(
           'Request not accepted · controller returned ${response.statusCode}',
@@ -465,6 +475,38 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
     } catch (error) {
       if (mounted) _notice('Request failed · $error');
+    }
+  }
+
+  Future<void> _confirmCleanSweep() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('clean-sweep-confirmation'),
+        title: const Text('Clean sweep both models?'),
+        content: const Text(
+          'Stops both acquisition owners, removes every disposable lane-local '
+          'cache, checkpoint, cursor, candidate slice, processed/rejected '
+          'memory, download cache, and unfinished root, then launches clean '
+          'models. Permanent receipts and shared staged/live duplicate '
+          'protection are preserved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            key: const ValueKey('confirm-clean-sweep-button'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.cleaning_services_rounded),
+            label: const Text('Clean Sweep'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _sendAction('clean-sweep', laneId: 'fleet');
     }
   }
 
@@ -611,6 +653,20 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                 size: 18,
               ),
               label: Text(_worldBooksMode ? 'Web Sweeper' : 'World'),
+            ),
+          if (!_worldBooksMode && compactHeader)
+            IconButton(
+              key: const ValueKey('clean-sweep-button'),
+              onPressed: _connecting ? null : _confirmCleanSweep,
+              tooltip: 'Clean Sweep both models',
+              icon: const Icon(Icons.cleaning_services_rounded),
+            )
+          else if (!_worldBooksMode)
+            TextButton.icon(
+              key: const ValueKey('clean-sweep-button'),
+              onPressed: _connecting ? null : _confirmCleanSweep,
+              icon: const Icon(Icons.cleaning_services_rounded, size: 18),
+              label: const Text('Clean Sweep'),
             ),
           TextButton.icon(
             key: const ValueKey('refresh-ui-button'),

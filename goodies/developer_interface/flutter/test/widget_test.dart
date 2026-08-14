@@ -65,8 +65,26 @@ void main() {
     );
     expect(find.text('World'), findsOneWidget);
     expect(find.text('Reset UI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('clean-sweep-button')), findsOneWidget);
     expect(find.text('Readable text color:'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clean sweep requires explicit receipt-preserving confirmation', (
+    tester,
+  ) async {
+    await pumpAt(tester, const Size(1440, 1000));
+    await tester.tap(find.byKey(const ValueKey('clean-sweep-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('clean-sweep-confirmation')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Permanent receipts'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('confirm-clean-sweep-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('workspace toggle switches to the isolated translator UI', (
