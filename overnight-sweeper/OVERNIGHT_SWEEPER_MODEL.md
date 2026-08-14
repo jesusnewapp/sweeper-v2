@@ -211,4 +211,6 @@ prior-screening memory, extend the registered frontier with bounded precise
 Christian query families inside the same source boundary, and resume with one
 coordinator. Keep all rights, relevance, completeness, language, identity, and
 duplicate gates unchanged. Health is restored only when authoritative accepted
-membership increases.
+membership increases. When a collection yields survivors and then exhausts,
+rotate before partial-unit handoff so those survivors remain in the same
+protected root while the next collection continues filling its target.
