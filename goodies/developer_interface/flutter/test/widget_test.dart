@@ -427,6 +427,43 @@ void main() {
     );
   });
 
+  testWidgets('idle publisher shows only the next-batch waiting state', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'publisher',
+              name: 'Stage-to-live publisher',
+              stage: 'complete',
+              accepted: 0,
+              target: 0,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'last unit complete',
+              modeDetail: {'completionState': 'published'},
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 0,
+              since: now,
+            ),
+            stageObservation: StageObservation(stage: 'complete', since: now),
+            now: now,
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Waiting for next staged batch'), findsOneWidget);
+    expect(find.text('Published'), findsNothing);
+    expect(find.textContaining('Verification'), findsNothing);
+    expect(find.textContaining('100%'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
   testWidgets('acquisition search gate has a timed health signal', (
     tester,
   ) async {

@@ -2448,10 +2448,61 @@ class ModelCard extends StatelessWidget {
     final stageHeldFor = stageObservation == null
         ? Duration.zero
         : now.difference(stageObservation!.since);
+    final queuedBatches = model.modeDetail['batchQueue'] is List
+        ? model.modeDetail['batchQueue'] as List
+        : const [];
     final publisherIdle =
-        model.id == 'publisher' &&
-        model.target == 0 &&
-        model.stage.toLowerCase().contains('listening for next');
+        model.id == 'publisher' && model.target == 0 && queuedBatches.isEmpty;
+    if (publisherIdle) {
+      return Card(
+        key: const ValueKey('publisher-idle-card'),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.cloud_queue_rounded,
+                    color: Color(0xff83a891),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      model.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 34),
+              const Icon(
+                Icons.hourglass_empty_rounded,
+                color: Color(0xff83cda4),
+                size: 30,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Waiting for next staged batch',
+                key: ValueKey('publisher-idle-label'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xffa9e2bf),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 34),
+            ],
+          ),
+        ),
+      );
+    }
     final uiStuck = !publisherIdle && heldFor.inMinutes >= 5;
     final uiActive =
         !publisherIdle &&
@@ -2532,82 +2583,81 @@ class ModelCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!substageComplete)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.only(top: 5),
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(top: 5),
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    model.name,
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
                     ),
                   ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      model.name,
-                      softWrap: true,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                  if (model.batchNumber > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      key: ValueKey('batch-number-${model.id}'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff173426),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${model.batchNumber}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
+                ),
+                if (model.batchNumber > 0) ...[
                   const SizedBox(width: 6),
                   Container(
-                    key: ValueKey('gate-signal-${model.id}'),
+                    key: ValueKey('batch-number-${model.id}'),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 7,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.10),
+                      color: const Color(0xff173426),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: color.withValues(alpha: 0.55)),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.radar_rounded, size: 12, color: color),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Gate ${gate.current}/${gate.total} · ${gateSeconds}s',
-                          key: ValueKey('gate-text-${model.id}'),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: color,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${model.batchNumber}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ],
-              ),
+                const SizedBox(width: 6),
+                Container(
+                  key: ValueKey('gate-signal-${model.id}'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: color.withValues(alpha: 0.55)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.radar_rounded, size: 12, color: color),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Gate ${gate.current}/${gate.total} · ${gateSeconds}s',
+                        key: ValueKey('gate-text-${model.id}'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 7),
             Align(
               alignment: Alignment.centerRight,

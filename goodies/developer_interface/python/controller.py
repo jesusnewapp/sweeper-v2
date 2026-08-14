@@ -494,7 +494,22 @@ class SweeperController:
                 "candidateRecords": _count(crawl_counts.get("candidates")),
                 "discovered": _count(crawl_counts.get("candidates")),
             })
-            if stage.casefold() == "preflight-running":
+            if stage.casefold() == "acquisition-running":
+                retrieved = _count(crawl_counts.get("retrieved"))
+                retrieval_target = _count(crawl_counts.get("retrievalTarget"))
+                mode = "acquisition"
+                mode_detail.update({
+                    "mode": mode,
+                    "substageProgressLabel": "Retrieving and accepting books",
+                    "substageProgressCurrent": retrieved,
+                    "substageProgressTarget": retrieval_target,
+                    "nextStage": "Validate accepted manuscript unit",
+                })
+                detail = (
+                    f"Retrieval moving · {retrieved}/{retrieval_target} books processed · "
+                    f"{accepted} authoritatively accepted"
+                )
+            elif stage.casefold() == "preflight-running":
                 preflighted = _count(crawl_counts.get("preflighted"))
                 preflight_target = _count(crawl_counts.get("preflightTarget"))
                 mode = "acquisition"
