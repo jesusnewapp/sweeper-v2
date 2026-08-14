@@ -10,9 +10,10 @@ quality, provenance, hashing, deduplication, or continuation rules.
 - Keep publication, live promotion, and live verification in a separate writer.
 - Keep one canonical coordinator per source unit. Never run overlapping workers
   against the same unit or checkpoint.
-- Continue without a numeric batch limit when configured. Stop only for source
-  exhaustion, operator shutdown, a capacity gate, or a fail-closed integrity or
-  source error.
+- Continue without a numeric batch limit when configured. Exit only for source
+  exhaustion, operator shutdown, or a fail-closed integrity or source error. A
+  capacity gate pauses scheduling while the canonical coordinator retains its
+  protected root; it does not terminate an unlimited campaign.
 - Allow the operator to raise a source unit ceiling when measured acceptance
   throughput and free-space headroom support it; the ceiling changes packaging
   size only and never weakens item gates or the capacity stop.
@@ -142,6 +143,9 @@ staging throughput cannot silently outrun verified publication capacity.
   lower it automatically.
 - Stop before scheduling new retrieval or atomic output work when the capacity
   gate fails.
+- Keep the canonical coordinator attached to its current checkpoint during the
+  capacity pause, record the required headroom and bounded retry interval, and
+  resume the same protected unit automatically after free space recovers.
 - Retry only transient transport failures such as broken pipes, connection
   resets, timeouts, rate limits, and server errors.
 - Use low upload concurrency, bounded attempts, and exponential backoff.
