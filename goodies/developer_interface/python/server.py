@@ -11,8 +11,14 @@ import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlsplit
 
 from controller import SweeperController
+
+
+def request_path(raw_target: str) -> str:
+    """Return the route without cache-busting queries or fragments."""
+    return urlsplit(raw_target).path
 
 
 def response(handler: BaseHTTPRequestHandler, status: int, payload: Dict[str, Any]) -> None:
@@ -39,9 +45,10 @@ def handler_factory(controller: SweeperController, token: str, local_no_auth: bo
             response(self, 204, {})
 
         def do_GET(self) -> None:  # noqa: N802
+            route = request_path(self.path)
             if not self._authorized():
                 response(self, 401, {"error": "unauthorized"})
-            elif self.path == "/api/status":
+            elif route == "/api/status":
                 response(self, 200, controller.status())
             else:
                 response(self, 404, {"error": "not found"})
@@ -51,15 +58,16 @@ def handler_factory(controller: SweeperController, token: str, local_no_auth: bo
                 response(self, 401, {"error": "unauthorized"})
                 return
             length = min(int(self.headers.get("Content-Length", "0")), 65536)
+            route = request_path(self.path)
             try:
                 payload = json.loads(self.rfile.read(length) or b"{}")
-                if self.path == "/api/action":
+                if route == "/api/action":
                     result = controller.action(str(payload.get("action", "")), str(payload.get("lane", "")))
                     response(self, 202, result)
-                elif self.path == "/api/preferences":
+                elif route == "/api/preferences":
                     controller.save_preferences(payload)
                     response(self, 200, {"saved": True})
-                elif self.path == "/api/navigation":
+                elif route == "/api/navigation":
                     result = controller.navigate(
                         str(payload.get("lane", "")), payload.get("queries", [])
                     )

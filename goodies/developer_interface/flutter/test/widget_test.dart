@@ -64,7 +64,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('World'), findsOneWidget);
-    expect(find.text('Refresh UI'), findsOneWidget);
+    expect(find.text('Reset UI'), findsOneWidget);
     expect(find.text('Readable text color:'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

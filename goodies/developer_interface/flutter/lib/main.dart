@@ -391,13 +391,37 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   }
 
   Future<void> _manualRefresh() async {
-    final refreshed = await _connect(
+    if (_connecting) return;
+    setState(() {
+      _hasLiveData = false;
+      _codexLive = 0;
+      _confirmedStaged = 0;
+      _models = const [];
+      _progressObservations.clear();
+      _stageObservations.clear();
+      _loggedProgressObservations.clear();
+      _activity.clear();
+      _connectionMessage = 'Resetting UI · loading authoritative status…';
+    });
+    var refreshed = await _connect(
       resetUiObservations: true,
       forceNetwork: true,
     );
+    if (!refreshed && mounted) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      refreshed = await _connect(
+        quiet: true,
+        resetUiObservations: true,
+        forceNetwork: true,
+      );
+    }
     if (!mounted) return;
     final time = TimeOfDay.now().format(context);
-    _notice(refreshed ? 'UI refreshed · $time' : 'UI refresh failed · $time');
+    _notice(
+      refreshed
+          ? 'UI reset · authoritative status loaded · $time'
+          : 'UI reset · controller unavailable · $time',
+    );
   }
 
   Future<void> _sendAction(String action, {String? laneId}) async {
@@ -597,7 +621,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh_rounded, size: 19),
-            label: const Text('Refresh UI'),
+            label: const Text('Reset UI'),
           ),
           const SizedBox(width: 6),
         ],
