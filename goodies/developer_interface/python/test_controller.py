@@ -7,6 +7,27 @@ from pathlib import Path
 from controller import SweeperController
 
 
+class JsonReadCacheTest(unittest.TestCase):
+    def test_json_cache_reuses_unchanged_file_and_invalidates_atomic_replace(self):
+        from controller import _read_json
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            path.write_text(json.dumps({"accepted": 1}))
+            first = _read_json(path)
+            self.assertIs(first, _read_json(path))
+            replacement = path.with_suffix(".tmp")
+            replacement.write_text(json.dumps({"accepted": 2}))
+            replacement.replace(path)
+            self.assertEqual(2, _read_json(path)["accepted"])
+
+    def test_public_optimization_standard_has_exactly_200_points(self):
+        from controller import (OPTIMIZATION_CONTROLS, OPTIMIZATION_POINT_COUNT,
+                                OPTIMIZATION_STAGES)
+        self.assertEqual(10, len(OPTIMIZATION_STAGES))
+        self.assertEqual(20, len(OPTIMIZATION_CONTROLS))
+        self.assertEqual(200, OPTIMIZATION_POINT_COUNT)
+
+
 class ControllerTests(unittest.TestCase):
     def test_navigation_pool_is_bounded_and_source_specific(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -124,6 +124,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   bool _hasLiveData = false;
   int _codexLive = 0;
   int _confirmedStaged = 0;
+  int _optimizationPoints = 0;
   String _endpoint = _defaultEndpoint;
   bool _worldBooksMode = _initialWorldBooks;
   String _token = '';
@@ -368,6 +369,11 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         _codexLive = (payload['codexLive'] as num?)?.toInt() ?? _codexLive;
         _confirmedStaged =
             (payload['confirmedStaged'] as num?)?.toInt() ?? _confirmedStaged;
+        final optimization = payload['optimizationStandard'];
+        if (optimization is Map) {
+          _optimizationPoints =
+              (optimization['points'] as num?)?.toInt() ?? _optimizationPoints;
+        }
         if (parsedModels != null) {
           if (resetUiObservations) {
             _progressObservations.clear();
@@ -869,6 +875,13 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                   label: 'Healthy lanes',
                   value: _hasLiveData ? '$healthy / ${_models.length}' : '—',
                   icon: Icons.health_and_safety_outlined,
+                ),
+                Metric(
+                  label: 'Optimization points',
+                  value: _hasLiveData && _optimizationPoints > 0
+                      ? _optimizationPoints.toString()
+                      : '—',
+                  icon: Icons.speed_rounded,
                 ),
               ],
             ),

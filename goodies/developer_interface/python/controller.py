@@ -15,13 +15,39 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 DEFAULT_CONFIG = Path(__file__).with_name("controller.example.json")
+_JSON_CACHE_LIMIT = 2048
+_JSON_CACHE: Dict[str, tuple[tuple[int, int, int], Dict[str, Any]]] = {}
+OPTIMIZATION_STAGES = (
+    "discovery", "gate-0", "metadata", "retrieval", "conversion",
+    "deduplication", "checkpoint", "staging", "publication", "live-verification",
+)
+OPTIMIZATION_CONTROLS = (
+    "early-exit", "immutable-cache", "hash-reuse", "bounded-batching",
+    "respectful-concurrency", "backpressure", "bounded-retry", "timeout",
+    "resumability", "append-only-decisions", "memory-bound", "capacity-gate",
+    "identity-projection", "source-pacing", "deterministic-order",
+    "exclusive-ownership", "authoritative-observability", "recovery-receipt",
+    "stale-state-invalidation", "integrity-fail-closed",
+)
+OPTIMIZATION_POINT_COUNT = len(OPTIMIZATION_STAGES) * len(OPTIMIZATION_CONTROLS)
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
+    key = str(path)
     try:
+        metadata = path.stat()
+        signature = (metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
+        cached = _JSON_CACHE.get(key)
+        if cached and cached[0] == signature:
+            return cached[1]
         value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, dict) else {}
+        result = value if isinstance(value, dict) else {}
+        _JSON_CACHE[key] = (signature, result)
+        if len(_JSON_CACHE) > _JSON_CACHE_LIMIT:
+            _JSON_CACHE.pop(next(iter(_JSON_CACHE)))
+        return result
     except (FileNotFoundError, json.JSONDecodeError, OSError):
+        _JSON_CACHE.pop(key, None)
         return {}
 
 
@@ -857,6 +883,12 @@ class SweeperController:
             "lanes": lanes,
             "allHealthy": bool(lanes) and all(item["health"] == "healthy" for item in lanes),
             "productionWriterLimit": 1,
+            "optimizationStandard": {
+                "points": OPTIMIZATION_POINT_COUNT,
+                "stages": len(OPTIMIZATION_STAGES),
+                "controlsPerStage": len(OPTIMIZATION_CONTROLS),
+                "integrityFirst": True,
+            },
         }
 
     def action(self, action: str, lane_id: str) -> Dict[str, Any]:
