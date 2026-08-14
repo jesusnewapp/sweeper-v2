@@ -506,6 +506,13 @@ clock. Publisher retry fingerprints bind every eligibility artifact, including
 checkpoint and import-report membership, so a repaired mismatch becomes a safe
 new retry rather than an unchanged parked failure.
 
+Continuous source coordinators must serialize ownership with an OS-held lock
+bound to lane state. Screen names and PID snapshots are observability only; an
+orphaned shell must never allow two coordinators to mutate one unfinished root.
+Relevance matching is word- and phrase-aware so personal names such as “Hans
+Christian Andersen,” generic pamphlet bindings, and technical handbooks with an
+incidental Christian-calendar reference cannot create false Christian evidence.
+
 ## Progressive 2 + 1 → 2 → 6 layout
 
 - Two major lanes for large repositories.
