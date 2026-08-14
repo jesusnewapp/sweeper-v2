@@ -383,6 +383,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('completed acceptance substage leaves the active card', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'internet-archive',
+              name: 'Internet Archive · General Christian',
+              stage: 'prepare',
+              accepted: 2000,
+              target: 2000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'acceptance complete',
+              modeDetail: {
+                'substageProgressLabel': 'Accepting books',
+                'substageProgressCurrent': 2000,
+                'substageProgressTarget': 2000,
+              },
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 1000,
+              since: now,
+            ),
+            stageObservation: StageObservation(stage: 'prepare', since: now),
+            now: now,
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('card-substage-meter-internet-archive')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('card-substage-remaining-internet-archive')),
+      findsNothing,
+    );
+  });
+
   testWidgets('acquisition search gate has a timed health signal', (
     tester,
   ) async {

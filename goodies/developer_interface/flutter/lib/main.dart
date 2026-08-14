@@ -1711,7 +1711,7 @@ List<String> pipelineSubstagesFor(ModelView model, int gateNumber) {
       'Verify Christian relevance and English',
       'Retrieve complete text',
       'Extract and convert',
-      'Journal authoritative acceptance',
+      'Accepting books',
     ],
     [
       'Freeze candidate membership',
@@ -2208,6 +2208,7 @@ class ModelCard extends StatelessWidget {
     final substages = pipelineSubstagesFor(model, gateNumber);
     final active = activeSubstageFor(model, gateNumber, substages);
     final progress = authoritativeSubstageProgress(model);
+    final substageComplete = progress != null && progress >= 1.0;
     final activityPulse = ((now.second % 10) + 1) / 10;
     final liveLabel =
         '${model.modeDetail['substageProgressLabel'] ?? substages[active]}';
@@ -2223,40 +2224,42 @@ class ModelCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Substage ${active + 1}/${substages.length} · $liveLabel',
-                  key: ValueKey('substage-label-${model.id}'),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+          if (!substageComplete)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Substage ${active + 1}/${substages.length} · $liveLabel',
+                    key: ValueKey('substage-label-${model.id}'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                progress == null
-                    ? 'Live activity'
-                    : '${((1 - progress) * 100).toStringAsFixed(1)}% left',
-                key: ValueKey('substage-percent-${model.id}'),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: color,
+                Text(
+                  progress == null
+                      ? 'Live activity'
+                      : '${((1 - progress) * 100).toStringAsFixed(1)}% left',
+                  key: ValueKey('substage-percent-${model.id}'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          LinearProgressIndicator(
-            key: ValueKey('substage-meter-${model.id}'),
-            value: progress ?? activityPulse,
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(8),
-            backgroundColor: const Color(0xff173426),
-            color: color,
-          ),
+              ],
+            ),
+          if (!substageComplete) const SizedBox(height: 6),
+          if (!substageComplete)
+            LinearProgressIndicator(
+              key: ValueKey('substage-meter-${model.id}'),
+              value: progress ?? activityPulse,
+              minHeight: 6,
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xff173426),
+              color: color,
+            ),
           const SizedBox(height: 8),
           for (var index = 0; index < substages.length; index++)
             Padding(
@@ -2508,6 +2511,8 @@ class ModelCard extends StatelessWidget {
       activeSubstages,
     );
     final substageProgress = authoritativeSubstageProgress(model);
+    final substageComplete =
+        substageProgress != null && substageProgress >= 1.0;
     final activityPulse = ((now.second % 10) + 1) / 10;
     final substageProgressLabel =
         '${model.modeDetail['substageProgressLabel'] ?? activeSubstages[activeSubstage]}';
@@ -2527,81 +2532,82 @@ class ModelCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(top: 5),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    model.name,
-                    softWrap: true,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
+            if (!substageComplete)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(top: 5),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
                     ),
                   ),
-                ),
-                if (model.batchNumber > 0) ...[
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      model.name,
+                      softWrap: true,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  if (model.batchNumber > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      key: ValueKey('batch-number-${model.id}'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff173426),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${model.batchNumber}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 6),
                   Container(
-                    key: ValueKey('batch-number-${model.id}'),
+                    key: ValueKey('gate-signal-${model.id}'),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 7,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xff173426),
+                      color: color.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: color.withValues(alpha: 0.55)),
                     ),
-                    child: Text(
-                      '${model.id == 'publisher' ? 'Unit' : 'Batch'} ${model.batchNumber}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.radar_rounded, size: 12, color: color),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Gate ${gate.current}/${gate.total} · ${gateSeconds}s',
+                          key: ValueKey('gate-text-${model.id}'),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: color,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-                const SizedBox(width: 6),
-                Container(
-                  key: ValueKey('gate-signal-${model.id}'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: color.withValues(alpha: 0.55)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.radar_rounded, size: 12, color: color),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Gate ${gate.current}/${gate.total} · ${gateSeconds}s',
-                        key: ValueKey('gate-text-${model.id}'),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: color,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
             const SizedBox(height: 7),
             Align(
               alignment: Alignment.centerRight,
@@ -2765,50 +2771,53 @@ class ModelCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 5),
-            LinearProgressIndicator(
-              key: ValueKey('pipeline-meter-${model.id}'),
-              value: overallProgress,
-              minHeight: 5,
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xff173426),
-              color: color,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Substage ${activeSubstage + 1}/${activeSubstages.length} · $substageProgressLabel',
-                    key: ValueKey('card-substage-label-${model.id}'),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xffa9c8b5),
-                      fontWeight: FontWeight.w800,
+            if (!substageComplete) const SizedBox(height: 5),
+            if (!substageComplete)
+              LinearProgressIndicator(
+                key: ValueKey('pipeline-meter-${model.id}'),
+                value: overallProgress,
+                minHeight: 5,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xff173426),
+                color: color,
+              ),
+            if (!substageComplete) const SizedBox(height: 10),
+            if (!substageComplete)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Substage ${activeSubstage + 1}/${activeSubstages.length} · $substageProgressLabel',
+                      key: ValueKey('card-substage-label-${model.id}'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xffa9c8b5),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  substageProgress == null
-                      ? 'Measuring live…'
-                      : '${((1 - substageProgress) * 100).toStringAsFixed(1)}% left',
-                  key: ValueKey('card-substage-remaining-${model.id}'),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+                  Text(
+                    substageProgress == null
+                        ? 'Measuring live…'
+                        : '${((1 - substageProgress) * 100).toStringAsFixed(1)}% left',
+                    key: ValueKey('card-substage-remaining-${model.id}'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            LinearProgressIndicator(
-              key: ValueKey('card-substage-meter-${model.id}'),
-              value: substageProgress ?? activityPulse,
-              minHeight: 5,
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xff173426),
-              color: const Color(0xff4cc9f0),
-            ),
+                ],
+              ),
+            if (!substageComplete) const SizedBox(height: 5),
+            if (!substageComplete)
+              LinearProgressIndicator(
+                key: ValueKey('card-substage-meter-${model.id}'),
+                value: substageProgress ?? activityPulse,
+                minHeight: 5,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xff173426),
+                color: const Color(0xff4cc9f0),
+              ),
             const SizedBox(height: 14),
             Text(
               model.mode == 'discovery' && pagesCompleted != null

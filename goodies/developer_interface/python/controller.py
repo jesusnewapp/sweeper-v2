@@ -559,7 +559,7 @@ class SweeperController:
         elif (stage.casefold() in {"prepare", "discovery"}
               and accepted > 0 and target > 0):
             mode_detail.update({
-                "substageProgressLabel": "Authoritative acceptances",
+                "substageProgressLabel": "Accepting books",
                 "substageProgressCurrent": accepted,
                 "substageProgressTarget": target,
             })
