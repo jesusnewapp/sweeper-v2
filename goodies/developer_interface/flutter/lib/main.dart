@@ -319,6 +319,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     bool quiet = false,
     bool resetUiObservations = false,
     bool forceNetwork = false,
+    bool workspaceCorrectionAttempted = false,
   }) async {
     if (_connecting) return false;
     setState(() {
@@ -348,6 +349,36 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final preferences = await SharedPreferences.getInstance();
+      final expectedWorkspace = _worldBooksMode ? 'world_books' : 'web_sweeper';
+      final actualWorkspace = payload['workspace'] as String?;
+      if (actualWorkspace != null && actualWorkspace != expectedWorkspace) {
+        if (workspaceCorrectionAttempted) {
+          throw Exception(
+            'controller workspace mismatch: expected $expectedWorkspace, got $actualWorkspace',
+          );
+        }
+        final endpointKey = _worldBooksMode
+            ? 'world_books_controller_endpoint'
+            : 'controller_endpoint';
+        final correctedEndpoint = _worldBooksMode
+            ? _worldBooksEndpoint
+            : _webSweeperEndpoint;
+        await preferences.setString(endpointKey, correctedEndpoint);
+        if (!mounted) return false;
+        setState(() {
+          _endpoint = correctedEndpoint;
+          _hasLiveData = false;
+          _models = const [];
+          _connecting = false;
+          _connectionMessage = 'Correcting controller workspace…';
+        });
+        return _connect(
+          quiet: quiet,
+          resetUiObservations: true,
+          forceNetwork: true,
+          workspaceCorrectionAttempted: true,
+        );
+      }
       await preferences.setString(
         _worldBooksMode
             ? 'world_books_controller_endpoint'

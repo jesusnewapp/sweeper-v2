@@ -874,8 +874,13 @@ class SweeperController:
         codex_live = _count(metrics.get("codexLive", self.config.get("codexLive", 0)))
         publisher_live = max((_count(lane.get("codexLive")) for lane in lanes), default=0)
         codex_live = max(codex_live, publisher_live, self._receipt_live_total())
+        lane_ids = {str(item.get("id", "")) for item in lanes}
+        workspace = str(self.config.get("workspace", "")).strip() or (
+            "world_books" if "translation-review" in lane_ids else "web_sweeper"
+        )
         return {
             "schemaVersion": 1,
+            "workspace": workspace,
             "checkedAt": checked_at.isoformat().replace("+00:00", "Z"),
             "codexLive": codex_live,
             "confirmedStaged": _count(metrics.get("confirmedStaged")),

@@ -27,6 +27,19 @@ class JsonReadCacheTest(unittest.TestCase):
         self.assertEqual(20, len(OPTIMIZATION_CONTROLS))
         self.assertEqual(200, OPTIMIZATION_POINT_COUNT)
 
+    def test_workspace_identity_is_derived_from_controller_lanes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            regular = root / "regular.json"
+            regular.write_text(json.dumps({"projectRoot": str(root), "lanes": []}))
+            self.assertEqual("web_sweeper", SweeperController(regular).status()["workspace"])
+            world = root / "world.json"
+            world.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "translation-review", "statePath": "missing.json"}],
+            }))
+            self.assertEqual("world_books", SweeperController(world).status()["workspace"])
+
 
 class ControllerTests(unittest.TestCase):
     def test_navigation_pool_is_bounded_and_source_specific(self):
