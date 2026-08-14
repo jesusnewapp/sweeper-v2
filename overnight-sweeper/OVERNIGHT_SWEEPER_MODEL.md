@@ -164,9 +164,14 @@ staging throughput cannot silently outrun verified publication capacity.
   completed unit. Preserve manuscripts, catalogs, hashes, receipts, checkpoints,
   rejection memory, and active-unit caches unless the configured recovery path
   proves those bytes are available elsewhere.
-- Never delete from an active unit. Resolve cleanup targets from completed
-  receipt membership, validate every path beneath the configured cache root,
-  log the reclaimed count and bytes, then recheck free space and worker health.
+- In an active unit, delete only re-downloadable source-cache directories that
+  a fail-closed scan proves are not referenced by any accepted manuscript
+  provenance. Preserve accepted source evidence and every checkpoint, journal,
+  candidate/cursor, dedup, staged/live protection, and permanent receipt.
+  Unreadable or incomplete provenance forbids cleanup. Log the reclaimed count
+  and bytes, resume the same root, then prove health through accepted growth.
+- Resolve every cleanup target beneath the configured cache root and never
+  delete authoritative active-unit artifacts.
 - Run that exact source-cache disposal automatically after each passing staging
   receipt when the deployment has configured hash-verified rehydration. After
   exact live verification, also discard the corresponding local manuscript
