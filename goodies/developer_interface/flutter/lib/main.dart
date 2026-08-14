@@ -2503,20 +2503,30 @@ class ModelCard extends StatelessWidget {
         ),
       );
     }
-    final uiStuck = !publisherIdle && heldFor.inMinutes >= 5;
+    final normalizedStage = model.stage.toLowerCase().replaceAll('_', '-');
+    final sourceReadyToStage =
+        model.id != 'publisher' &&
+        model.accepted > 0 &&
+        (normalizedStage.contains('validation-complete') ||
+            normalizedStage.contains('acquisition-complete'));
+    final uiStuck = !sourceReadyToStage && heldFor.inMinutes >= 5;
     final uiActive =
         !publisherIdle &&
         !uiStuck &&
         model.health != Health.failed &&
         heldFor.inSeconds <= 60;
-    final activityColor = uiStuck
+    final activityColor = sourceReadyToStage
+        ? const Color(0xff35d07f)
+        : uiStuck
         ? const Color(0xffff4d67)
         : uiActive
         ? const Color(0xff35d07f)
         : publisherIdle
         ? const Color(0xff83a891)
         : const Color(0xfff5d142);
-    final activityLabel = uiStuck
+    final activityLabel = sourceReadyToStage
+        ? 'Ready to stage'
+        : uiStuck
         ? 'Stuck'
         : uiActive
         ? 'UI active'

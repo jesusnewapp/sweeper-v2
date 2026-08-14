@@ -464,6 +464,47 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
+  testWidgets('validated source remains ready instead of becoming stuck', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'global-grey-christianity',
+              name: 'Global Grey Ebooks · Christianity',
+              stage: 'validation-complete',
+              accepted: 39,
+              target: 39,
+              uploaded: 0,
+              health: Health.watch,
+              detail: 'Validation complete · 39/39 accepted manuscripts',
+              modeDetail: {
+                'substageProgressCurrent': 39,
+                'substageProgressTarget': 39,
+              },
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 1000,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'validation-complete',
+              since: since,
+            ),
+            now: since.add(const Duration(minutes: 10)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Ready to stage'), findsOneWidget);
+    expect(find.text('Stuck'), findsNothing);
+    expect(find.textContaining('Why:'), findsNothing);
+  });
+
   testWidgets('acquisition search gate has a timed health signal', (
     tester,
   ) async {

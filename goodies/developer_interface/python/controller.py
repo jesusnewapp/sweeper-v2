@@ -494,7 +494,22 @@ class SweeperController:
                 "candidateRecords": _count(crawl_counts.get("candidates")),
                 "discovered": _count(crawl_counts.get("candidates")),
             })
-            if stage.casefold() == "acquisition-running":
+            if stage.casefold() in {"validation-running", "validation-complete"}:
+                validation_current = _count(state.get("validationCurrent"))
+                validation_target = _count(state.get("validationTarget")) or accepted
+                mode = "acquisition"
+                mode_detail.update({
+                    "mode": mode,
+                    "substageProgressLabel": "Validating accepted manuscripts",
+                    "substageProgressCurrent": validation_current,
+                    "substageProgressTarget": validation_target,
+                    "nextStage": "Protected staging handoff",
+                })
+                detail = (
+                    f"Validation {'complete' if stage.casefold() == 'validation-complete' else 'moving'} · "
+                    f"{validation_current}/{validation_target} accepted manuscripts"
+                )
+            elif stage.casefold() == "acquisition-running":
                 retrieved = _count(crawl_counts.get("retrieved"))
                 retrieval_target = _count(crawl_counts.get("retrievalTarget"))
                 mode = "acquisition"
