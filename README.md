@@ -821,6 +821,16 @@ source turns, explicit breathing state, and `sweeper plan`.
 Provider-specific adapters and export targets
 belong in separate extensions so the core remains small and auditable.
 
+For long-running source adapters, transport recovery should be bounded at two
+levels. Retry only rate limits, upstream 5xx responses, socket timeouts,
+connection failures, and incomplete reads inside the request client. If that
+budget is exhausted, return a distinct transient result so the single locked
+source coordinator can back off and resume the unchanged checkpoint and
+append-only journal. Do not turn arbitrary exceptions into retries: policy,
+integrity, duplicate, and programming failures must remain visible and fail
+closed. Process activity is not proof of recovery; the source's authoritative
+accepted-item count must increase.
+
 ## License
 
 Apache License 2.0. Attribution is appreciated; see [NOTICE](NOTICE).
