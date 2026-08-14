@@ -188,6 +188,15 @@ void main() {
                 'completionState': 'published',
                 'published': 1376,
                 'liveVerified': 1376,
+                'batchQueue': [
+                  {
+                    'batchNumber': 3,
+                    'name': 'internet_archive_unit_003',
+                    'books': 1214,
+                    'status': 'Ready to roll',
+                    'current': false,
+                  },
+                ],
               },
             ),
             observation: ProgressObservation(
@@ -209,6 +218,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Published'), findsOneWidget);
+    expect(find.byKey(const ValueKey('publisher-batch-queue')), findsOneWidget);
+    expect(find.text('Unit 3 · 1214 books'), findsOneWidget);
+    expect(find.text('Ready to roll'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

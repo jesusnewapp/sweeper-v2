@@ -522,6 +522,11 @@ class ControllerTests(unittest.TestCase):
                     "currentAction": "publish-and-five-gate-verify",
                     "checkedAt": datetime.now(timezone.utc).isoformat(),
                     "queue": {"pendingUnits": 1},
+                    "units": [{
+                        "root": str(unit),
+                        "status": "eligible",
+                        "bridge": {"accepted": 1},
+                    }],
                 }),
                 encoding="utf-8",
             )
@@ -544,6 +549,9 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(1, lane["liveVerified"])
             self.assertEqual("live-verification", lane["stage"])
             self.assertEqual(1, lane["modeDetail"]["gateProgressCurrent"])
+            self.assertEqual(1, lane["batchQueue"][0]["books"])
+            self.assertEqual("live-verification", lane["batchQueue"][0]["status"])
+            self.assertTrue(lane["batchQueue"][0]["current"])
 
     def test_publisher_distinguishes_ready_from_parked_queue_units(self):
         with tempfile.TemporaryDirectory() as temporary:

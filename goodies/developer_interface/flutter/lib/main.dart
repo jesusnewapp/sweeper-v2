@@ -1687,7 +1687,9 @@ class ModelCard extends StatelessWidget {
         unchangedFor.inSeconds >= 300 ? 'Stuck' : 'Moving / observed',
       ),
       MapEntry('unchangedFor', formatDuration(unchangedFor)),
-      ...model.modeDetail.entries.where((entry) => entry.key != 'mode'),
+      ...model.modeDetail.entries.where(
+        (entry) => entry.key != 'mode' && entry.key != 'batchQueue',
+      ),
     ];
     final modeColor = _modeColor(unchangedFor);
     showDialog<void>(
@@ -1754,6 +1756,64 @@ class ModelCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _publisherBatchRow(Map<String, dynamic> batch, int index) {
+    final status = '${batch['status'] ?? 'Queued'}';
+    final statusLower = status.toLowerCase();
+    final statusColor = statusLower.contains('completed')
+        ? const Color(0xff35d07f)
+        : statusLower.contains('block')
+        ? const Color(0xffff8a3d)
+        : (batch['current'] == true)
+        ? const Color(0xff4cc9f0)
+        : const Color(0xffffd166);
+    final books = (batch['books'] as num?)?.toInt() ?? 0;
+    final batchNumber = (batch['batchNumber'] as num?)?.toInt() ?? 0;
+    return Container(
+      key: ValueKey('publisher-queued-batch-$index'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: statusColor.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.inventory_2_outlined, size: 16, color: statusColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${batchNumber > 0 ? 'Unit $batchNumber · ' : ''}$books books',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '${batch['name'] ?? 'staged batch'}',
+                  softWrap: true,
+                  style: const TextStyle(
+                    color: Color(0xff83a891),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1907,6 +1967,12 @@ class ModelCard extends StatelessWidget {
               '${model.accepted} survivors carried forward'
         : null;
     final completionState = '${model.modeDetail['completionState'] ?? ''}';
+    final batchQueue = model.modeDetail['batchQueue'] is List
+        ? (model.modeDetail['batchQueue'] as List)
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+        : const <Map<String, dynamic>>[];
     final gateProgressLabel =
         '${model.modeDetail['gateProgressLabel'] ?? 'Gate loading'}';
     final gateProgressCurrent =
@@ -2263,6 +2329,37 @@ class ModelCard extends StatelessWidget {
               softWrap: true,
               style: const TextStyle(fontSize: 12, color: Color(0xff83a891)),
             ),
+            if (model.id == 'publisher' && batchQueue.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                key: const ValueKey('publisher-batch-queue'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xff0c2017),
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: const Color(0xff28533d)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'BATCHES READY TO ROLL',
+                      style: TextStyle(
+                        color: Color(0xff83cda4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.7,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    for (var index = 0; index < batchQueue.length; index++) ...[
+                      if (index > 0) const SizedBox(height: 6),
+                      _publisherBatchRow(batchQueue[index], index),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             Wrap(
               alignment: WrapAlignment.spaceBetween,

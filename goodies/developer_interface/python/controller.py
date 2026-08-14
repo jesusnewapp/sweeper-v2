@@ -618,6 +618,49 @@ class SweeperController:
                 if ready_units > 0
                 else "Listening for next exact staged unit"
             )
+        batch_queue = []
+        unit_rows = state.get("units") if isinstance(state.get("units"), list) else []
+        for row in unit_rows:
+            if not isinstance(row, dict):
+                continue
+            root_value = str(row.get("root") or "")
+            bridge = row.get("bridge") if isinstance(row.get("bridge"), dict) else {}
+            book_count = _count(bridge.get("accepted"))
+            if not book_count and root_value:
+                book_count = _count(_read_json(Path(root_value) / "catalog.json").get("books", []))
+            raw_status = str(row.get("status") or "ready").casefold()
+            if current and root_value == current_root:
+                queue_status = stage
+            elif raw_status in {"eligible", "ready"}:
+                queue_status = "Ready to roll"
+            elif "fail" in raw_status or "block" in raw_status:
+                queue_status = "Blocked · publisher will retry"
+            elif "park" in raw_status:
+                queue_status = "Parked · unchanged"
+            elif "preflight" in raw_status:
+                queue_status = "Preflight"
+            else:
+                queue_status = str(row.get("status") or "Queued")
+            batch_queue.append({
+                "batchNumber": _batch_number(root_value),
+                "name": Path(root_value).name if root_value else "unknown batch",
+                "root": root_value,
+                "books": book_count,
+                "status": queue_status,
+                "current": bool(current and root_value == current_root),
+            })
+        if latest and str(latest.get("root") or "") not in {
+            item["root"] for item in batch_queue
+        }:
+            latest_root = str(latest.get("root") or "")
+            batch_queue.append({
+                "batchNumber": _batch_number(latest_root),
+                "name": Path(latest_root).name if latest_root else "last completed batch",
+                "root": latest_root,
+                "books": _count(latest.get("liveVerified")),
+                "status": "Completed · live-verified",
+                "current": False,
+            })
         continuation = (
             state.get("automaticContinuation")
             if isinstance(state.get("automaticContinuation"), dict)
@@ -636,6 +679,7 @@ class SweeperController:
             "queueReady": ready_units,
             "queueParked": parked_units,
             "queuePreflight": preflight_units,
+            "batchQueue": batch_queue,
             "publicationReceipt": bool(publication),
             "promotionReceipt": bool(promotion),
             "completionState": (
@@ -685,6 +729,7 @@ class SweeperController:
             "queueReady": ready_units,
             "queueParked": parked_units,
             "queuePreflight": preflight_units,
+            "batchQueue": batch_queue,
             "updatedAt": updated,
             "currentRoot": current_root,
             "mode": mode,
