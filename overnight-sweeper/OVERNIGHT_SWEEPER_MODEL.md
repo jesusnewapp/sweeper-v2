@@ -221,3 +221,10 @@ legitimately inherit that exhausted final cursor. Append new high-precision
 families to the registry and resume the same non-fresh unit; allow the old
 cursor to return zero and rotate forward. The recovery proof is new accepted
 membership from an appended family, not a process restart or UI label.
+
+Do not extend one institution forever when successive bounded additions yield
+only negligible final remainders. Publish those survivors, preserve permanent
+receipts and shared duplicate protection, retire only the exhausted acquisition
+owner, and move the slot to a proven non-overlapping institution. Update the UI
+to name the real source. The successor becomes healthy only when its
+authoritative accepted membership increases.
