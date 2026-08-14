@@ -494,13 +494,41 @@ class SweeperController:
                 "candidateRecords": _count(crawl_counts.get("candidates")),
                 "discovered": _count(crawl_counts.get("candidates")),
             })
-            if stage.casefold() == "bounded-frontier-complete":
+            if stage.casefold() == "preflight-running":
+                preflighted = _count(crawl_counts.get("preflighted"))
+                preflight_target = _count(crawl_counts.get("preflightTarget"))
+                mode = "acquisition"
+                mode_detail.update({
+                    "mode": mode,
+                    "substageProgressLabel": "Gate 0 candidate preflight",
+                    "substageProgressCurrent": preflighted,
+                    "substageProgressTarget": preflight_target,
+                    "nextStage": "Retrieve approved complete-text editions",
+                })
+                detail = (
+                    f"Gate 0 moving · {preflighted}/{preflight_target} candidates checked · "
+                    f"{_count(crawl_counts.get('preflightSurvivors'))} survivors"
+                )
+            elif stage.casefold() == "preflight-complete":
+                mode = "acquisition"
+                mode_detail.update({
+                    "mode": mode,
+                    "substageProgressLabel": "Begin complete-text retrieval",
+                    "substageProgressCurrent": 0,
+                    "substageProgressTarget": _count(crawl_counts.get("preflightSurvivors")),
+                    "nextStage": "Retrieve approved complete-text editions",
+                })
+                detail = (
+                    f"Gate 0 complete · {_count(crawl_counts.get('preflightSurvivors'))} "
+                    "survivors ready for complete-text retrieval"
+                )
+            elif stage.casefold() == "bounded-frontier-complete":
                 mode = "discovery"
                 mode_detail.update({
                     "mode": mode,
-                    "gateProgressLabel": "Bounded source inventory",
-                    "gateProgressCurrent": _count(crawl_counts.get("visited")),
-                    "gateProgressTarget": _count(crawl_counts.get("visited")),
+                    "substageProgressLabel": "Gate 0 candidate preflight",
+                    "substageProgressCurrent": 0,
+                    "substageProgressTarget": _count(crawl_counts.get("candidates")),
                     "nextStage": "Gate 0 identity and format preflight",
                 })
                 detail = (
@@ -522,6 +550,19 @@ class SweeperController:
             display_accepted = accepted
             display_target = target
             detail = f"{accepted}/{target} accepted · staging"
+        if progress_active and progress_total > 0:
+            mode_detail.update({
+                "substageProgressLabel": "Staging objects",
+                "substageProgressCurrent": uploaded,
+                "substageProgressTarget": progress_total,
+            })
+        elif (stage.casefold() in {"prepare", "discovery"}
+              and accepted > 0 and target > 0):
+            mode_detail.update({
+                "substageProgressLabel": "Authoritative acceptances",
+                "substageProgressCurrent": accepted,
+                "substageProgressTarget": target,
+            })
         historical_accepted = sum(max(
             _count(item.get("staged")),
             _count(item.get("published")),
@@ -876,6 +917,12 @@ class SweeperController:
                 ),
                 "gateProgressCurrent": phase_count,
                 "gateProgressTarget": target,
+                "substageProgressLabel": (
+                    "Staging upload" if stage == "staging-upload"
+                    else "Protected staging handoff"
+                ),
+                "substageProgressCurrent": phase_count,
+                "substageProgressTarget": target,
             })
         elif current and target > 0:
             gate_label = {
@@ -889,7 +936,16 @@ class SweeperController:
                     "gateProgressLabel": gate_label,
                     "gateProgressCurrent": phase_count,
                     "gateProgressTarget": target,
+                    "substageProgressLabel": gate_label,
+                    "substageProgressCurrent": phase_count,
+                    "substageProgressTarget": target,
                 })
+        elif not current and not handoff_rows:
+            mode_detail.update({
+                "substageProgressLabel": "Publisher idle completion",
+                "substageProgressCurrent": 1,
+                "substageProgressTarget": 1,
+            })
         return {
             "id": definition.get("id", "publisher"),
             "name": definition.get("name", "Stage-to-live publisher"),

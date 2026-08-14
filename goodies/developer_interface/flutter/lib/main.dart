@@ -1863,6 +1863,14 @@ int activeSubstageFor(ModelView model, int gateNumber, List<String> substages) {
   return 0;
 }
 
+double? authoritativeSubstageProgress(ModelView model) {
+  final current = (model.modeDetail['substageProgressCurrent'] as num?)
+      ?.toInt();
+  final target = (model.modeDetail['substageProgressTarget'] as num?)?.toInt();
+  if (current == null || target == null || target <= 0) return null;
+  return (current / target).clamp(0.0, 1.0);
+}
+
 String discoveryAcquisitionFocus(ModelView model) {
   final signal = '${model.stage} ${model.mode}'.toLowerCase();
   if (signal.contains('acquir') ||
@@ -2199,7 +2207,10 @@ class ModelCard extends StatelessWidget {
   Widget _substagePanel(int gateNumber) {
     final substages = pipelineSubstagesFor(model, gateNumber);
     final active = activeSubstageFor(model, gateNumber, substages);
-    final progress = (active + 1) / substages.length;
+    final progress = authoritativeSubstageProgress(model);
+    final activityPulse = ((now.second % 10) + 1) / 10;
+    final liveLabel =
+        '${model.modeDetail['substageProgressLabel'] ?? substages[active]}';
     return Container(
       key: ValueKey('substage-panel-${model.id}-$gateNumber'),
       margin: const EdgeInsets.only(top: 10),
@@ -2216,7 +2227,7 @@ class ModelCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Substage ${active + 1}/${substages.length} · ${substages[active]}',
+                  'Substage ${active + 1}/${substages.length} · $liveLabel',
                   key: ValueKey('substage-label-${model.id}'),
                   style: const TextStyle(
                     fontSize: 11,
@@ -2225,7 +2236,9 @@ class ModelCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '${((1 - progress) * 100).toStringAsFixed(0)}% left',
+                progress == null
+                    ? 'Live activity'
+                    : '${((1 - progress) * 100).toStringAsFixed(1)}% left',
                 key: ValueKey('substage-percent-${model.id}'),
                 style: TextStyle(
                   fontSize: 11,
@@ -2238,7 +2251,7 @@ class ModelCard extends StatelessWidget {
           const SizedBox(height: 6),
           LinearProgressIndicator(
             key: ValueKey('substage-meter-${model.id}'),
-            value: progress,
+            value: progress ?? activityPulse,
             minHeight: 6,
             borderRadius: BorderRadius.circular(8),
             backgroundColor: const Color(0xff173426),
@@ -2432,6 +2445,30 @@ class ModelCard extends StatelessWidget {
     final stageHeldFor = stageObservation == null
         ? Duration.zero
         : now.difference(stageObservation!.since);
+    final publisherIdle =
+        model.id == 'publisher' &&
+        model.target == 0 &&
+        model.stage.toLowerCase().contains('listening for next');
+    final uiStuck = !publisherIdle && heldFor.inMinutes >= 5;
+    final uiActive =
+        !publisherIdle &&
+        !uiStuck &&
+        model.health != Health.failed &&
+        heldFor.inSeconds <= 60;
+    final activityColor = uiStuck
+        ? const Color(0xffff4d67)
+        : uiActive
+        ? const Color(0xff35d07f)
+        : publisherIdle
+        ? const Color(0xff83a891)
+        : const Color(0xfff5d142);
+    final activityLabel = uiStuck
+        ? 'Stuck'
+        : uiActive
+        ? 'UI active'
+        : publisherIdle
+        ? 'UI idle'
+        : 'No current activity';
     final gate = gatePositionFor(model);
     final pipelineLabel = pipelineStageLabel(model, gate);
     final gateSeconds = max(0, stageHeldFor.inSeconds);
@@ -2470,9 +2507,15 @@ class ModelCard extends StatelessWidget {
       gate.current,
       activeSubstages,
     );
-    final substageProgress = (activeSubstage + 1) / activeSubstages.length;
-    final overallProgress = ((gate.current - 1 + substageProgress) / gate.total)
-        .clamp(0.0, 1.0);
+    final substageProgress = authoritativeSubstageProgress(model);
+    final activityPulse = ((now.second % 10) + 1) / 10;
+    final substageProgressLabel =
+        '${model.modeDetail['substageProgressLabel'] ?? activeSubstages[activeSubstage]}';
+    final overallProgress =
+        ((gate.current - 1 + (substageProgress ?? 0)) / gate.total).clamp(
+          0.0,
+          1.0,
+        );
     final completionLabel = switch (completionState) {
       'published' => 'Published',
       'staged' => 'Staged',
@@ -2637,32 +2680,36 @@ class ModelCard extends StatelessWidget {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xff35d07f).withValues(alpha: 0.14),
+                      color: activityColor.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xff35d07f)),
+                      border: Border.all(color: activityColor),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xff35d07f,
-                          ).withValues(alpha: 0.38),
+                          color: activityColor.withValues(alpha: 0.38),
                           blurRadius: 12,
                           spreadRadius: 1,
                         ),
                       ],
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.bolt_rounded,
+                          uiStuck
+                              ? Icons.error_outline_rounded
+                              : uiActive
+                              ? Icons.bolt_rounded
+                              : publisherIdle
+                              ? Icons.pause_circle_outline_rounded
+                              : Icons.hourglass_empty_rounded,
                           size: 15,
-                          color: Color(0xff64dc98),
+                          color: activityColor,
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
-                          'Active',
+                          activityLabel,
                           style: TextStyle(
-                            color: Color(0xff64dc98),
+                            color: activityColor,
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2732,7 +2779,7 @@ class ModelCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Substage ${activeSubstage + 1}/${activeSubstages.length} · ${activeSubstages[activeSubstage]}',
+                    'Substage ${activeSubstage + 1}/${activeSubstages.length} · $substageProgressLabel',
                     key: ValueKey('card-substage-label-${model.id}'),
                     style: const TextStyle(
                       fontSize: 11,
@@ -2742,7 +2789,9 @@ class ModelCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${((1 - substageProgress) * 100).toStringAsFixed(0)}% left',
+                  substageProgress == null
+                      ? 'Measuring live…'
+                      : '${((1 - substageProgress) * 100).toStringAsFixed(1)}% left',
                   key: ValueKey('card-substage-remaining-${model.id}'),
                   style: const TextStyle(
                     fontSize: 11,
@@ -2754,7 +2803,7 @@ class ModelCard extends StatelessWidget {
             const SizedBox(height: 5),
             LinearProgressIndicator(
               key: ValueKey('card-substage-meter-${model.id}'),
-              value: substageProgress,
+              value: substageProgress ?? activityPulse,
               minHeight: 5,
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xff173426),
@@ -2763,11 +2812,25 @@ class ModelCard extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               model.mode == 'discovery' && pagesCompleted != null
-                  ? '$pagesCompleted pages scanned'
+                  ? uiStuck
+                        ? 'Stuck at $pagesCompleted pages scanned'
+                        : '$pagesCompleted pages scanned'
                   : '${model.accepted.toString()} / ${model.target.toString()}',
               key: ValueKey('primary-counter-${model.id}'),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
+            if (uiStuck) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Why: ${model.detail}',
+                key: ValueKey('stuck-reason-${model.id}'),
+                style: const TextStyle(
+                  color: Color(0xffff8a9a),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
             if (model.mode != 'discovery' && gateProgress == null) ...[
               const SizedBox(height: 7),
               LinearProgressIndicator(

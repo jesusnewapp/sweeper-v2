@@ -418,7 +418,7 @@ void main() {
       find.byKey(const ValueKey('active-pill-library-of-congress')),
       findsOneWidget,
     );
-    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('UI active'), findsOneWidget);
     expect(find.text('prepare'), findsNothing);
     expect(find.text('Discovery · 37s'), findsOneWidget);
     expect(tester.takeException(), isNull);
