@@ -214,3 +214,10 @@ duplicate gates unchanged. Health is restored only when authoritative accepted
 membership increases. When a collection yields survivors and then exhausts,
 rotate before partial-unit handoff so those survivors remain in the same
 protected root while the next collection continues filling its target.
+
+If the final registered family closes with a valid partial remainder, stage
+and publish those survivors before expanding discovery. The next unit can
+legitimately inherit that exhausted final cursor. Append new high-precision
+families to the registry and resume the same non-fresh unit; allow the old
+cursor to return zero and rotate forward. The recovery proof is new accepted
+membership from an appended family, not a process restart or UI label.
