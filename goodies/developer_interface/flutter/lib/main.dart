@@ -6,17 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _appMode = String.fromEnvironment(
-  'APP_MODE',
-  defaultValue: 'web_sweeper',
-);
-const _initialWorldBooks = _appMode == 'world_books';
 const _defaultEndpoint = String.fromEnvironment(
   'CONTROLLER_URL',
   defaultValue: 'http://127.0.0.1:8790',
 );
 const _webSweeperEndpoint = 'http://127.0.0.1:8790';
-const _worldBooksEndpoint = 'http://127.0.0.1:8791';
 
 void main() => runApp(const WebSweeperDeveloperApp());
 
@@ -58,9 +52,7 @@ class _WebSweeperDeveloperAppState extends State<WebSweeperDeveloperApp> {
     final base = ThemeData.dark(useMaterial3: true);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: _initialWorldBooks
-          ? 'Web Sweeper World'
-          : 'Web Sweeper Developer Interface',
+      title: 'Web Sweeper Developer Interface',
       theme: base.copyWith(
         scaffoldBackgroundColor: const Color(0xff07110d),
         colorScheme: ColorScheme.fromSeed(
@@ -121,12 +113,12 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   bool _tertiary = true;
   bool _bridge = false;
   bool _connecting = false;
+  bool _resettingUi = false;
   bool _hasLiveData = false;
   int _codexLive = 0;
   int _confirmedStaged = 0;
   int _optimizationPoints = 0;
   String _endpoint = _defaultEndpoint;
-  bool _worldBooksMode = _initialWorldBooks;
   String _token = '';
   String _connectionMessage = 'Local controller not connected';
   Timer? _progressTimer;
@@ -135,6 +127,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   final Map<String, ProgressObservation> _progressObservations = {};
   final Map<String, StageObservation> _stageObservations = {};
   final Set<String> _loggedProgressObservations = {};
+  final Set<String> _actionsInFlight = {};
   final List<ActivityEntry> _activity = [];
   final List<ModelSlotDraft> _modelSlots = List.generate(10, (index) {
     if (index == 0) {
@@ -195,7 +188,9 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     _statusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       // Cold-start failures must heal too. Requiring prior live data here
       // trapped the interface in preview mode after a brief controller outage.
-      if (!_connecting) _connect(quiet: true);
+      // Always bypass caches: this timer defines UI health as current live
+      // controller state, not a previously successful response.
+      if (!_connecting) _connect(quiet: true, forceNetwork: true);
     });
     _restoreConnection();
   }
@@ -276,43 +271,11 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   Future<void> _restoreConnection() async {
     final preferences = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final endpointKey = _worldBooksMode
-        ? 'world_books_controller_endpoint'
-        : 'controller_endpoint';
     setState(() {
-      _endpoint = preferences.getString(endpointKey) ?? _endpoint;
+      _endpoint = preferences.getString('controller_endpoint') ?? _endpoint;
       _token = preferences.getString('controller_token') ?? '';
     });
     await _connect(quiet: true);
-  }
-
-  Future<void> _switchWorkspace() async {
-    if (_connecting) return;
-    final worldBooks = !_worldBooksMode;
-    final preferences = await SharedPreferences.getInstance();
-    final endpointKey = worldBooks
-        ? 'world_books_controller_endpoint'
-        : 'controller_endpoint';
-    final fallback = worldBooks ? _worldBooksEndpoint : _webSweeperEndpoint;
-    if (!mounted) return;
-    setState(() {
-      _worldBooksMode = worldBooks;
-      _endpoint = preferences.getString(endpointKey) ?? fallback;
-      _hasLiveData = false;
-      _codexLive = 0;
-      _confirmedStaged = 0;
-      _models = const [];
-      _progressObservations.clear();
-      _stageObservations.clear();
-      _loggedProgressObservations.clear();
-      _connectionMessage = 'Switching independent controller…';
-    });
-    await _connect(quiet: true, resetUiObservations: true, forceNetwork: true);
-    if (mounted) {
-      _notice(
-        worldBooks ? 'Web Sweeper World connected' : 'Web Sweeper connected',
-      );
-    }
   }
 
   Future<bool> _connect({
@@ -349,7 +312,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final preferences = await SharedPreferences.getInstance();
-      final expectedWorkspace = _worldBooksMode ? 'world_books' : 'web_sweeper';
+      const expectedWorkspace = 'web_sweeper';
       final actualWorkspace = payload['workspace'] as String?;
       if (actualWorkspace != null && actualWorkspace != expectedWorkspace) {
         if (workspaceCorrectionAttempted) {
@@ -357,13 +320,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             'controller workspace mismatch: expected $expectedWorkspace, got $actualWorkspace',
           );
         }
-        final endpointKey = _worldBooksMode
-            ? 'world_books_controller_endpoint'
-            : 'controller_endpoint';
-        final correctedEndpoint = _worldBooksMode
-            ? _worldBooksEndpoint
-            : _webSweeperEndpoint;
-        await preferences.setString(endpointKey, correctedEndpoint);
+        const correctedEndpoint = _webSweeperEndpoint;
+        await preferences.setString('controller_endpoint', correctedEndpoint);
         if (!mounted) return false;
         setState(() {
           _endpoint = correctedEndpoint;
@@ -379,12 +337,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           workspaceCorrectionAttempted: true,
         );
       }
-      await preferences.setString(
-        _worldBooksMode
-            ? 'world_books_controller_endpoint'
-            : 'controller_endpoint',
-        _endpoint,
-      );
+      await preferences.setString('controller_endpoint', _endpoint);
       await preferences.setString('controller_token', _token);
       final lanes = payload['lanes'];
       final parsedModels = lanes is List
@@ -428,16 +381,19 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   }
 
   Future<void> _manualRefresh() async {
-    if (_connecting) return;
+    if (_resettingUi) return;
+    setState(() => _resettingUi = true);
+    // A periodic status read may be in flight when the user presses Reset UI.
+    // Queue behind it instead of disabling/ignoring the button. The request
+    // itself has an eight-second timeout, so this bounded wait cannot hang.
+    for (var attempt = 0; _connecting && attempt < 90; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+    }
+    // Keep the last proven controller snapshot visible until a replacement
+    // succeeds. A transient controller restart must never replace live cards
+    // with preview lanes or zero counters.
     setState(() {
-      _hasLiveData = false;
-      _codexLive = 0;
-      _confirmedStaged = 0;
-      _models = const [];
-      _progressObservations.clear();
-      _stageObservations.clear();
-      _loggedProgressObservations.clear();
-      _activity.clear();
       _connectionMessage = 'Resetting UI · loading authoritative status…';
     });
     var refreshed = await _connect(
@@ -453,12 +409,16 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       );
     }
     if (!mounted) return;
+    if (refreshed) {
+      setState(() => _activity.clear());
+    }
     final time = TimeOfDay.now().format(context);
     _notice(
       refreshed
           ? 'UI reset · authoritative status loaded · $time'
           : 'UI reset · controller unavailable · $time',
     );
+    setState(() => _resettingUi = false);
   }
 
   Future<void> _sendAction(String action, {String? laneId}) async {
@@ -477,6 +437,25 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             orElse: () => _models.first,
           );
     final requestedLane = laneId == 'fleet' ? 'fleet' : selected.id;
+    final actionKey = '$action:$requestedLane';
+    if (_actionsInFlight.contains(actionKey)) return;
+    final priorModels = List<ModelView>.of(_models);
+    setState(() {
+      _actionsInFlight.add(actionKey);
+      _models = _models.map((model) {
+        final affected = requestedLane == 'fleet' || model.id == requestedLane;
+        if (!affected) return model;
+        return model.copyWith(
+          stage: action == 'push'
+              ? 'Push requested · awaiting handoff receipt'
+              : action == 'clean-sweep'
+              ? 'Clean sweep · stopping and relaunching'
+              : 'Reset requested · stopping lane',
+          health: Health.watch,
+          detail: 'Controller accepted the UI transition request',
+        );
+      }).toList();
+    });
     try {
       final base = _endpoint.endsWith('/')
           ? _endpoint.substring(0, _endpoint.length - 1)
@@ -493,12 +472,64 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           .timeout(const Duration(seconds: 8));
       if (!mounted) return;
       if (response.statusCode == 202 || response.statusCode == 200) {
+        final payload = jsonDecode(response.body) as Map<String, dynamic>;
+        final pushedBooks = (payload['books'] as num?)?.toInt();
         _notice(
-          '${action[0].toUpperCase()}${action.substring(1)} request accepted for '
-          '${requestedLane == 'fleet' ? 'both Web Sweeper models' : selected.name}',
+          action == 'push' && pushedBooks != null
+              ? '$pushedBooks approved books handed to staging from ${selected.name}'
+              : '${action[0].toUpperCase()}${action.substring(1)} request accepted for '
+                    '${requestedLane == 'fleet' ? 'both Web Sweeper models' : selected.name}',
         );
-        if (action == 'clean-sweep') {
+        setState(() {
+          if (action == 'push' && pushedBooks != null) {
+            _models = _models.map((model) {
+              if (model.id == selected.id) {
+                return model.copyWith(
+                  stage: 'Handoff accepted · next acquisition unit',
+                  accepted: 0,
+                  detail:
+                      '$pushedBooks approved books moved to protected staging',
+                );
+              }
+              if (model.id == 'publisher') {
+                return model.copyWith(
+                  stage: 'Approved handoff · preparing for staging',
+                  accepted: pushedBooks,
+                  target: pushedBooks,
+                  health: Health.watch,
+                  detail:
+                      'Exact pushed batch received · publisher refresh in progress',
+                );
+              }
+              return model;
+            }).toList();
+          } else if (action == 'clean-sweep') {
+            _models = _models
+                .map(
+                  (model) => model.copyWith(
+                    stage: model.id == 'publisher'
+                        ? 'Clean sweep · preserving receipts'
+                        : 'Initialize · clean relaunch',
+                    accepted: 0,
+                    target: model.id == 'publisher' ? 0 : model.target,
+                    uploaded: 0,
+                    health: Health.watch,
+                  ),
+                )
+                .toList();
+          }
+          _syncProgressObservations(_models);
+        });
+        if (action == 'push') {
+          await _connect(quiet: true, forceNetwork: true);
+        } else if (action == 'clean-sweep') {
           await Future<void>.delayed(const Duration(seconds: 2));
+          await _connect(
+            quiet: true,
+            resetUiObservations: true,
+            forceNetwork: true,
+          );
+        } else {
           await _connect(
             quiet: true,
             resetUiObservations: true,
@@ -506,12 +537,18 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           );
         }
       } else {
+        setState(() => _models = priorModels);
         _notice(
           'Request not accepted · controller returned ${response.statusCode}',
         );
       }
     } catch (error) {
-      if (mounted) _notice('Request failed · $error');
+      if (mounted) {
+        setState(() => _models = priorModels);
+        _notice('Request failed · $error');
+      }
+    } finally {
+      if (mounted) setState(() => _actionsInFlight.remove(actionKey));
     }
   }
 
@@ -544,6 +581,44 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
     );
     if (confirmed == true && mounted) {
       await _sendAction('clean-sweep', laneId: 'fleet');
+    }
+  }
+
+  Future<void> _confirmLaneCleanReset(ModelView model) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: ValueKey('clean-reset-confirmation-${model.id}'),
+        title: Text('Clean reset ${model.name}?'),
+        content: const Text(
+          'Stops this acquisition lane, removes only its disposable local '
+          'cache, checkpoints, cursors, candidate memory, download cache, and '
+          'unfinished roots, then relaunches it with two workers. Shared '
+          'duplicate protection, completed staging roots, and permanent live '
+          'receipts remain protected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            key: ValueKey('confirm-clean-reset-${model.id}'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.cleaning_services_rounded),
+            label: const Text('Clean reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _sendAction('clean-reset-lane', laneId: model.id);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await _connect(
+        quiet: true,
+        resetUiObservations: true,
+        forceNetwork: true,
+      );
     }
   }
 
@@ -632,9 +707,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.asset(
-                _worldBooksMode
-                    ? 'assets/websweeper-world.png'
-                    : 'assets/sweeper-logo.png',
+                'assets/sweeper-logo.png',
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -647,7 +720,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _worldBooksMode ? 'WEB SWEEPER WORLD' : 'WEB SWEEPER',
+                    'WEB SWEEPER',
                     maxLines: 1,
                     overflow: TextOverflow.fade,
                     softWrap: false,
@@ -658,9 +731,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                     ),
                   ),
                   Text(
-                    _worldBooksMode
-                        ? 'Translation & Manuscript Studio'
-                        : 'Developer Interface',
+                    'Developer Interface',
                     maxLines: 1,
                     overflow: TextOverflow.fade,
                     softWrap: false,
@@ -674,31 +745,12 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
         actions: [
           if (compactHeader)
             IconButton(
-              key: const ValueKey('workspace-toggle-button'),
-              onPressed: _connecting ? null : _switchWorkspace,
-              tooltip: _worldBooksMode ? 'Web Sweeper' : 'Web Sweeper World',
-              icon: Icon(
-                _worldBooksMode ? Icons.home_outlined : Icons.public_rounded,
-              ),
-            )
-          else
-            TextButton.icon(
-              key: const ValueKey('workspace-toggle-button'),
-              onPressed: _connecting ? null : _switchWorkspace,
-              icon: Icon(
-                _worldBooksMode ? Icons.home_outlined : Icons.public_rounded,
-                size: 18,
-              ),
-              label: Text(_worldBooksMode ? 'Web Sweeper' : 'World'),
-            ),
-          if (!_worldBooksMode && compactHeader)
-            IconButton(
               key: const ValueKey('clean-sweep-button'),
               onPressed: _connecting ? null : _confirmCleanSweep,
               tooltip: 'Clean Sweep both models',
               icon: const Icon(Icons.cleaning_services_rounded),
             )
-          else if (!_worldBooksMode)
+          else
             TextButton.icon(
               key: const ValueKey('clean-sweep-button'),
               onPressed: _connecting ? null : _confirmCleanSweep,
@@ -707,14 +759,14 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             ),
           TextButton.icon(
             key: const ValueKey('refresh-ui-button'),
-            onPressed: _connecting ? null : _manualRefresh,
-            icon: _connecting
+            onPressed: _resettingUi ? null : _manualRefresh,
+            icon: _resettingUi
                 ? const SizedBox.square(
                     dimension: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh_rounded, size: 19),
-            label: const Text('Reset UI'),
+            label: Text(_resettingUi ? 'Resetting…' : 'Reset UI'),
           ),
           const SizedBox(width: 6),
         ],
@@ -759,6 +811,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                                   now: _clock,
                                   onEmergencyReset: () =>
                                       _sendAction('reset', laneId: model.id),
+                                  onCleanReset: () =>
+                                      _confirmLaneCleanReset(model),
                                   onPush: () =>
                                       _sendAction('push', laneId: model.id),
                                 ),
@@ -1473,6 +1527,8 @@ class ModelView {
     this.stageSince,
     this.batchNumber = 0,
     this.successHistory = const [],
+    this.exhaustedSource = false,
+    this.acceptanceRate,
   });
   final String id;
   final String name;
@@ -1488,11 +1544,39 @@ class ModelView {
   final DateTime? stageSince;
   final int batchNumber;
   final List<SuccessRecord> successHistory;
+  final bool exhaustedSource;
+  final double? acceptanceRate;
 
   double get progress =>
       target == 0 ? 0.0 : (accepted / target).clamp(0.0, 1.0);
 
   int get progressTenthsPercent => (progress * 1000).round();
+
+  ModelView copyWith({
+    String? stage,
+    int? accepted,
+    int? target,
+    int? uploaded,
+    Health? health,
+    String? detail,
+  }) => ModelView(
+    id: id,
+    name: name,
+    stage: stage ?? this.stage,
+    accepted: accepted ?? this.accepted,
+    target: target ?? this.target,
+    uploaded: uploaded ?? this.uploaded,
+    health: health ?? this.health,
+    detail: detail ?? this.detail,
+    mode: mode,
+    modeDetail: modeDetail,
+    progressSince: progressSince,
+    stageSince: stageSince,
+    batchNumber: batchNumber,
+    successHistory: successHistory,
+    exhaustedSource: exhaustedSource,
+    acceptanceRate: acceptanceRate,
+  );
 
   factory ModelView.fromJson(Map<String, dynamic> json) {
     final healthName = (json['health'] as String? ?? 'watch').toLowerCase();
@@ -1525,6 +1609,8 @@ class ModelView {
             (value) => SuccessRecord.fromJson(Map<String, dynamic>.from(value)),
           )
           .toList(),
+      exhaustedSource: json['exhaustedSource'] == true,
+      acceptanceRate: (json['acceptanceRate'] as num?)?.toDouble(),
     );
   }
 }
@@ -1593,14 +1679,188 @@ List<String> pipelineStagesFor(ModelView model) {
   ];
   final publisherStages = [
     'Queue / preflight',
+    'Staging upload',
     'Live duplicate delta',
     'Dedup / prepare',
-    'Storage upload',
+    'Production storage upload',
     'Publish',
     'Live verification',
     'Complete',
   ];
   return model.id == 'publisher' ? publisherStages : sourceStages;
+}
+
+List<String> pipelineSubstagesFor(ModelView model, int gateNumber) {
+  final source = <List<String>>[
+    [
+      'Acquire lane lock',
+      'Verify single owner',
+      'Check 1 GiB capacity floor',
+      'Restore checkpoint and journals',
+      'Reconcile accepted membership',
+      'Load shared duplicate protection',
+      'Open source frontier',
+    ],
+    [
+      'Refresh live Gate 0 index',
+      'Select source collection',
+      'Scan discovery page',
+      'Parse work identity',
+      'Screen live duplicates',
+      'Verify rights',
+      'Verify Christian relevance and English',
+      'Retrieve complete text',
+      'Extract and convert',
+      'Journal authoritative acceptance',
+    ],
+    [
+      'Freeze candidate membership',
+      'Check structure and word floor',
+      'Check body language',
+      'Review whole-work boundaries',
+      'Run global duplicate check',
+      'Run substantive review',
+      'Write independent attestation',
+    ],
+    [
+      'Freeze exact staging membership',
+      'Recheck capacity',
+      'Upload staging objects',
+      'Write staging receipt',
+      'Advance upload checkpoint',
+    ],
+    [
+      'Verify staged membership',
+      'Verify catalog and manuscript hashes',
+      'Verify staged readability',
+      'Release exact unit to publisher queue',
+    ],
+    [
+      'Write unit completion receipt',
+      'Preserve accepted history',
+      'Advance source cursor',
+      'Open next protected unit',
+    ],
+  ];
+  final publisher = <List<String>>[
+    [
+      'Discover queued unit',
+      'Verify frozen membership',
+      'Verify validation attestation',
+      'Acquire serialized writer lease',
+    ],
+    [
+      'Read staging receipt',
+      'Verify exact staged membership',
+      'Bind staged hashes',
+    ],
+    [
+      'Refresh complete live index',
+      'Compare source identifiers',
+      'Compare work-family identities',
+      'Compare content identities',
+    ],
+    [
+      'Remove new overlaps',
+      'Freeze publishable membership',
+      'Bind catalog hash',
+      'Bind manuscript-set hash',
+    ],
+    [
+      'Upload manuscript objects',
+      'Upload cover objects',
+      'Verify production storage objects',
+    ],
+    [
+      'Write Firestore records',
+      'Update search documents',
+      'Assign Living Codex rooms',
+      'Confirm publication count',
+    ],
+    [
+      'Verify Firestore',
+      'Verify storage',
+      'Verify search',
+      'Verify room assignment',
+      'Verify reader access',
+    ],
+    [
+      'Write permanent live receipt',
+      'Record success history',
+      'Release writer lease',
+      'Clear active card to 0 / 0',
+    ],
+  ];
+  final groups = model.id == 'publisher' ? publisher : source;
+  return groups[(gateNumber - 1).clamp(0, groups.length - 1)];
+}
+
+int activeSubstageFor(ModelView model, int gateNumber, List<String> substages) {
+  final stage = model.stage.toLowerCase().replaceAll('_', '-');
+  if (model.id == 'publisher' &&
+      gateNumber == 8 &&
+      (stage.contains('listening for next') ||
+          stage.contains('ready for next') ||
+          stage == 'complete')) {
+    return substages.length - 1;
+  }
+  if (model.id != 'publisher' &&
+      gateNumber == 3 &&
+      stage.contains('bounded-frontier-complete')) {
+    return 0;
+  }
+  if (model.id != 'publisher' && gateNumber == 2) {
+    if (stage.contains('prepare') &&
+        ((model.modeDetail['acceptedJournalCount'] as num?)?.toInt() ?? 0) >
+            0) {
+      return substages.length - 1;
+    }
+    if (stage.contains('rotate') || stage.contains('collection')) return 1;
+  }
+  final measuredCurrent = (model.modeDetail['gateProgressCurrent'] as num?)
+      ?.toInt();
+  final measuredTarget = (model.modeDetail['gateProgressTarget'] as num?)
+      ?.toInt();
+  if (measuredCurrent != null && measuredTarget != null && measuredTarget > 0) {
+    return ((measuredCurrent / measuredTarget) * substages.length)
+        .floor()
+        .clamp(0, substages.length - 1);
+  }
+  final semanticMarkers = <String>[
+    'lock',
+    'capacity',
+    'checkpoint',
+    'live',
+    'frontier',
+    'discover',
+    'identity',
+    'rights',
+    'retrieve',
+    'convert',
+    'structure',
+    'language',
+    'whole-work',
+    'duplicate',
+    'attestation',
+    'membership',
+    'upload',
+    'receipt',
+    'hash',
+    'readability',
+    'firestore',
+    'search',
+    'room',
+    'reader',
+  ];
+  for (var index = substages.length - 1; index >= 0; index--) {
+    final label = substages[index].toLowerCase();
+    if (semanticMarkers.any(
+      (marker) => stage.contains(marker) && label.contains(marker),
+    )) {
+      return index;
+    }
+  }
+  return 0;
 }
 
 String discoveryAcquisitionFocus(ModelView model) {
@@ -1617,36 +1877,44 @@ String discoveryAcquisitionFocus(ModelView model) {
 GatePosition gatePositionFor(ModelView model) {
   final stage = model.stage.toLowerCase().replaceAll('_', '-');
   if (model.id == 'publisher') {
+    if (stage.contains('approved handoff') ||
+        stage.contains('preparing for staging') ||
+        stage.contains('staged · waiting')) {
+      return const GatePosition(1, 8);
+    }
     if (stage.contains('ready for next') ||
         stage.contains('listening for next') ||
         stage.contains('queue-advance') ||
         stage.contains('final-live-recount') ||
         stage.contains('receipt') ||
         stage == 'complete') {
-      return const GatePosition(7, 7);
+      return const GatePosition(8, 8);
     }
     if (stage.contains('live-verification') ||
         stage.contains('verification') ||
         stage.contains('verify')) {
-      return const GatePosition(6, 7);
+      return const GatePosition(7, 8);
     }
     if (stage.contains('firestore') ||
         stage.contains('publication-complete') ||
         stage.contains('publish')) {
-      return const GatePosition(5, 7);
+      return const GatePosition(6, 8);
+    }
+    if (stage.contains('staging-upload')) {
+      return const GatePosition(2, 8);
     }
     if (stage.contains('storage-upload') || stage.contains('upload')) {
-      return const GatePosition(4, 7);
+      return const GatePosition(5, 8);
     }
     if (stage.contains('room-allocation') ||
         stage.contains('duplicate') ||
         stage.contains('dedup')) {
-      return const GatePosition(3, 7);
+      return const GatePosition(4, 8);
     }
     if (stage.contains('fresh-live-delta') || stage.contains('live-delta')) {
-      return const GatePosition(2, 7);
+      return const GatePosition(3, 8);
     }
-    return const GatePosition(1, 7);
+    return const GatePosition(1, 8);
   }
 
   if (stage.contains('batch-complete') ||
@@ -1669,8 +1937,16 @@ GatePosition gatePositionFor(ModelView model) {
   if (stage.contains('validat') || stage.contains('review')) {
     return const GatePosition(3, 6);
   }
+  if (stage.contains('bounded-frontier-complete') ||
+      stage.contains('candidate-preflight')) {
+    return const GatePosition(3, 6);
+  }
   if (stage.contains('prepare') ||
       stage.contains('fresh-live-export') ||
+      stage.contains('positive-remainder') ||
+      stage.contains('rotate-source') ||
+      stage.contains('diminished-source') ||
+      stage.contains('upstream-backoff') ||
       stage.contains('discover') ||
       stage.contains('acquir') ||
       stage.contains('import')) {
@@ -1687,6 +1963,7 @@ class ModelCard extends StatelessWidget {
     required this.stageObservation,
     required this.now,
     this.onEmergencyReset,
+    this.onCleanReset,
     required this.onPush,
   });
   final ModelView model;
@@ -1694,6 +1971,7 @@ class ModelCard extends StatelessWidget {
   final StageObservation? stageObservation;
   final DateTime now;
   final VoidCallback? onEmergencyReset;
+  final VoidCallback? onCleanReset;
   final VoidCallback onPush;
 
   Color get color => switch (model.health) {
@@ -1918,6 +2196,95 @@ class ModelCard extends StatelessWidget {
     );
   }
 
+  Widget _substagePanel(int gateNumber) {
+    final substages = pipelineSubstagesFor(model, gateNumber);
+    final active = activeSubstageFor(model, gateNumber, substages);
+    final progress = (active + 1) / substages.length;
+    return Container(
+      key: ValueKey('substage-panel-${model.id}-$gateNumber'),
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xff071b12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Substage ${active + 1}/${substages.length} · ${substages[active]}',
+                  key: ValueKey('substage-label-${model.id}'),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${((1 - progress) * 100).toStringAsFixed(0)}% left',
+                key: ValueKey('substage-percent-${model.id}'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            key: ValueKey('substage-meter-${model.id}'),
+            value: progress,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(8),
+            backgroundColor: const Color(0xff173426),
+            color: color,
+          ),
+          const SizedBox(height: 8),
+          for (var index = 0; index < substages.length; index++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Icon(
+                    index < active
+                        ? Icons.check_circle_rounded
+                        : index == active
+                        ? Icons.play_circle_fill_rounded
+                        : Icons.circle_outlined,
+                    size: 14,
+                    color: index <= active ? color : const Color(0xff567563),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      substages[index],
+                      key: ValueKey(
+                        'substage-${model.id}-$gateNumber-${index + 1}',
+                      ),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: index == active
+                            ? FontWeight.w900
+                            : FontWeight.w500,
+                        color: index == active
+                            ? color
+                            : const Color(0xffa9c8b5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _showExactStage(BuildContext context, GatePosition gate) {
     final stages = pipelineStagesFor(model);
     final discoveryFocus = discoveryAcquisitionFocus(model);
@@ -1928,110 +2295,122 @@ class ModelCard extends StatelessWidget {
         title: Text('Exact stage · ${model.name}'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Live controller stage: ${model.stage}',
-                key: ValueKey('exact-stage-raw-${model.id}'),
-                style: const TextStyle(color: Color(0xff83a891)),
-              ),
-              const SizedBox(height: 12),
-              for (var index = 0; index < stages.length; index++)
-                Container(
-                  key: ValueKey('exact-stage-${model.id}-${index + 1}'),
-                  margin: const EdgeInsets.only(bottom: 7),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: index + 1 == gate.current
-                        ? color.withValues(alpha: 0.18)
-                        : const Color(0xff10271c),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: index + 1 == gate.current
-                          ? color
-                          : const Color(0xff254c38),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Live controller stage: ${model.stage}',
+                  key: ValueKey('exact-stage-raw-${model.id}'),
+                  style: const TextStyle(color: Color(0xff83a891)),
+                ),
+                const SizedBox(height: 12),
+                for (var index = 0; index < stages.length; index++)
+                  Container(
+                    key: ValueKey('exact-stage-${model.id}-${index + 1}'),
+                    margin: const EdgeInsets.only(bottom: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        index + 1 == gate.current
-                            ? Icons.play_arrow_rounded
-                            : index + 1 < gate.current
-                            ? Icons.check_rounded
-                            : Icons.circle_outlined,
-                        size: 18,
-                        color: index + 1 <= gate.current
+                    decoration: BoxDecoration(
+                      color: index + 1 == gate.current
+                          ? color.withValues(alpha: 0.18)
+                          : const Color(0xff10271c),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: index + 1 == gate.current
                             ? color
-                            : const Color(0xff83a891),
+                            : const Color(0xff254c38),
                       ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: index == 1 && model.id != 'publisher'
-                            ? Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  const Text('2. '),
-                                  Text(
-                                    'Discover',
-                                    key: ValueKey(
-                                      'exact-stage-${model.id}-discover',
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              index + 1 == gate.current
+                                  ? Icons.play_arrow_rounded
+                                  : index + 1 < gate.current
+                                  ? Icons.check_rounded
+                                  : Icons.circle_outlined,
+                              size: 18,
+                              color: index + 1 <= gate.current
+                                  ? color
+                                  : const Color(0xff83a891),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: index == 1 && model.id != 'publisher'
+                                  ? Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        const Text('2. '),
+                                        Text(
+                                          'Discover',
+                                          key: ValueKey(
+                                            'exact-stage-${model.id}-discover',
+                                          ),
+                                          style: TextStyle(
+                                            fontWeight:
+                                                discoveryFocus == 'discover'
+                                                ? FontWeight.w900
+                                                : FontWeight.w600,
+                                            color: discoveryFocus == 'discover'
+                                                ? color
+                                                : const Color(0xff83a891),
+                                          ),
+                                        ),
+                                        const Text(' & '),
+                                        Text(
+                                          'Acquire',
+                                          key: ValueKey(
+                                            'exact-stage-${model.id}-acquire',
+                                          ),
+                                          style: TextStyle(
+                                            fontWeight:
+                                                discoveryFocus == 'acquire'
+                                                ? FontWeight.w900
+                                                : FontWeight.w600,
+                                            color: discoveryFocus == 'acquire'
+                                                ? color
+                                                : const Color(0xff83a891),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Text(
+                                      '${index + 1}. ${stages[index]}',
+                                      style: TextStyle(
+                                        fontWeight: index + 1 == gate.current
+                                            ? FontWeight.w900
+                                            : FontWeight.w600,
+                                        color: index + 1 == gate.current
+                                            ? color
+                                            : null,
+                                      ),
                                     ),
-                                    style: TextStyle(
-                                      fontWeight: discoveryFocus == 'discover'
-                                          ? FontWeight.w900
-                                          : FontWeight.w600,
-                                      color: discoveryFocus == 'discover'
-                                          ? color
-                                          : const Color(0xff83a891),
-                                    ),
-                                  ),
-                                  const Text(' & '),
-                                  Text(
-                                    'Acquire',
-                                    key: ValueKey(
-                                      'exact-stage-${model.id}-acquire',
-                                    ),
-                                    style: TextStyle(
-                                      fontWeight: discoveryFocus == 'acquire'
-                                          ? FontWeight.w900
-                                          : FontWeight.w600,
-                                      color: discoveryFocus == 'acquire'
-                                          ? color
-                                          : const Color(0xff83a891),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Text(
-                                '${index + 1}. ${stages[index]}',
+                            ),
+                            if (index + 1 == gate.current)
+                              const Text(
+                                'CURRENT',
                                 style: TextStyle(
-                                  fontWeight: index + 1 == gate.current
-                                      ? FontWeight.w900
-                                      : FontWeight.w600,
-                                  color: index + 1 == gate.current
-                                      ? color
-                                      : null,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
-                      ),
-                      if (index + 1 == gate.current)
-                        const Text(
-                          'CURRENT',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          ],
                         ),
-                    ],
+                        if (index + 1 == gate.current)
+                          _substagePanel(index + 1),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
@@ -2056,7 +2435,7 @@ class ModelCard extends StatelessWidget {
     final gate = gatePositionFor(model);
     final pipelineLabel = pipelineStageLabel(model, gate);
     final gateSeconds = max(0, stageHeldFor.inSeconds);
-    final pushReady = heldFor.inSeconds >= 300;
+    final pushReady = model.id != 'publisher' && model.accepted > 0;
     final modeColor = _modeColor(heldFor);
     final pagesCompleted = (model.modeDetail['pagesCompleted'] as num?)
         ?.toInt();
@@ -2085,6 +2464,15 @@ class ModelCard extends StatelessWidget {
             gateProgressTarget > 0
         ? (gateProgressCurrent / gateProgressTarget).clamp(0.0, 1.0)
         : null;
+    final activeSubstages = pipelineSubstagesFor(model, gate.current);
+    final activeSubstage = activeSubstageFor(
+      model,
+      gate.current,
+      activeSubstages,
+    );
+    final substageProgress = (activeSubstage + 1) / activeSubstages.length;
+    final overallProgress = ((gate.current - 1 + substageProgress) / gate.total)
+        .clamp(0.0, 1.0);
     final completionLabel = switch (completionState) {
       'published' => 'Published',
       'staged' => 'Staged',
@@ -2322,7 +2710,7 @@ class ModelCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${(gate.current / gate.total * 100).toStringAsFixed(0)}%',
+                  '${(overallProgress * 100).toStringAsFixed(0)}%',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
@@ -2333,11 +2721,44 @@ class ModelCard extends StatelessWidget {
             const SizedBox(height: 5),
             LinearProgressIndicator(
               key: ValueKey('pipeline-meter-${model.id}'),
-              value: gate.current / gate.total,
+              value: overallProgress,
               minHeight: 5,
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xff173426),
               color: color,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Substage ${activeSubstage + 1}/${activeSubstages.length} · ${activeSubstages[activeSubstage]}',
+                    key: ValueKey('card-substage-label-${model.id}'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xffa9c8b5),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${((1 - substageProgress) * 100).toStringAsFixed(0)}% left',
+                  key: ValueKey('card-substage-remaining-${model.id}'),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            LinearProgressIndicator(
+              key: ValueKey('card-substage-meter-${model.id}'),
+              value: substageProgress,
+              minHeight: 5,
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xff173426),
+              color: const Color(0xff4cc9f0),
             ),
             const SizedBox(height: 14),
             Text(
@@ -2429,6 +2850,30 @@ class ModelCard extends StatelessWidget {
               softWrap: true,
               style: const TextStyle(fontSize: 12, color: Color(0xff83a891)),
             ),
+            if (model.exhaustedSource) ...[
+              const SizedBox(height: 8),
+              Container(
+                key: ValueKey('exhausted-source-${model.id}'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xff351416),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xffff4d5f)),
+                ),
+                child: Text(
+                  'EXHAUSTED SOURCE · ${model.acceptanceRate?.toStringAsFixed(3) ?? '0.000'}% accepted',
+                  key: ValueKey('exhausted-rate-${model.id}'),
+                  style: const TextStyle(
+                    color: Color(0xffff5f6d),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
             if (model.id == 'publisher' && batchQueue.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(
@@ -2467,6 +2912,20 @@ class ModelCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (model.id == 'google-books' &&
+                    model.stage != 'source-access-preflight')
+                  Tooltip(
+                    message: 'Fresh receipt-safe reset of this lane only',
+                    child: FilledButton.icon(
+                      key: ValueKey('clean-reset-${model.id}'),
+                      onPressed: onCleanReset,
+                      icon: const Icon(
+                        Icons.cleaning_services_rounded,
+                        size: 16,
+                      ),
+                      label: const Text('Clean reset'),
+                    ),
+                  ),
                 Tooltip(
                   message:
                       'Request an immediate, receipt-preserving lane reset',
@@ -2484,8 +2943,10 @@ class ModelCard extends StatelessWidget {
                 ),
                 Tooltip(
                   message: pushReady
-                      ? 'Request the next canonical stage for this lane'
-                      : 'Available after five minutes with no counter movement',
+                      ? 'Freeze ${model.accepted} approved books and hand them to protected staging'
+                      : model.id == 'publisher'
+                      ? 'The publisher advances automatically'
+                      : 'Available as soon as this lane has approved survivors',
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     decoration: BoxDecoration(
@@ -2504,7 +2965,7 @@ class ModelCard extends StatelessWidget {
                       key: ValueKey('push-${model.id}'),
                       onPressed: pushReady ? onPush : null,
                       icon: const Icon(Icons.fast_forward_rounded, size: 16),
-                      label: Text(pushReady ? 'Push' : 'Push · 5m'),
+                      label: const Text('Push'),
                     ),
                   ),
                 ),

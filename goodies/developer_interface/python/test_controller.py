@@ -33,15 +33,156 @@ class JsonReadCacheTest(unittest.TestCase):
             regular = root / "regular.json"
             regular.write_text(json.dumps({"projectRoot": str(root), "lanes": []}))
             self.assertEqual("web_sweeper", SweeperController(regular).status()["workspace"])
-            world = root / "world.json"
-            world.write_text(json.dumps({
-                "projectRoot": str(root),
-                "lanes": [{"id": "translation-review", "statePath": "missing.json"}],
-            }))
-            self.assertEqual("world_books", SweeperController(world).status()["workspace"])
 
 
 class ControllerTests(unittest.TestCase):
+    def test_acquisition_red_flag_starts_only_after_five_minutes_without_growth(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json", "target": 1000}],
+            }), encoding="utf-8")
+            four_minutes_ago = datetime.now(timezone.utc).timestamp() - 240
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "initialize",
+                "updatedAt": datetime.fromtimestamp(
+                    four_minutes_ago, timezone.utc
+                ).isoformat(),
+            }), encoding="utf-8")
+            self.assertEqual(
+                "watch", SweeperController(config_path).status()["lanes"][0]["health"]
+            )
+            six_minutes_ago = datetime.now(timezone.utc).timestamp() - 360
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "initialize",
+                "updatedAt": datetime.fromtimestamp(
+                    six_minutes_ago, timezone.utc
+                ).isoformat(),
+            }), encoding="utf-8")
+            self.assertEqual(
+                "stuck", SweeperController(config_path).status()["lanes"][0]["health"]
+            )
+
+    def test_push_freezes_exact_survivors_and_queues_immediate_publisher_handoff(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "work/judah_library/imports/library_of_congress_batch_0027"
+            unit.mkdir(parents=True)
+            (unit / "catalog.json").write_text(json.dumps({
+                "books": [{"id": str(index)} for index in range(65)],
+            }), encoding="utf-8")
+            (root / "loc.json").write_text(json.dumps({
+                "currentRoot": str(unit), "acceptedInCurrentBatch": 65,
+            }), encoding="utf-8")
+            (root / "publisher.json").write_text(json.dumps({
+                "listenerActive": True,
+                "checkedAt": datetime.now(timezone.utc).isoformat(),
+                "queue": {"pendingUnits": 0},
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "pushHandoffsPath": "handoffs.json",
+                "lanes": [
+                    {"id": "library-of-congress", "statePath": "loc.json", "target": 2000},
+                    {"id": "publisher", "kind": "publisher", "statePath": "publisher.json"},
+                ],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+            result = controller.action("push", "library-of-congress")
+            self.assertEqual(65, result["books"])
+            self.assertTrue((unit / "operator_switch_request.json").exists())
+            lanes = controller.status()["lanes"]
+            source = lanes[0]
+            publisher = lanes[1]
+            self.assertEqual((0, 2000), (source["accepted"], source["target"]))
+            self.assertEqual(65, source["acceptedCumulative"])
+            self.assertEqual((65, 65), (publisher["accepted"], publisher["target"]))
+            self.assertEqual(65, publisher["batchQueue"][0]["books"])
+            self.assertEqual(
+                "Approved handoff · preparing for staging",
+                publisher["batchQueue"][0]["status"],
+            )
+            (unit / "staging_upload_progress.json").write_text(json.dumps({
+                "phase": "storage-upload", "uploaded": 25, "total": 65,
+            }), encoding="utf-8")
+            publisher = controller.status()["lanes"][1]
+            self.assertEqual("staging-upload", publisher["stage"])
+            self.assertEqual((25, 65), (publisher["accepted"], publisher["target"]))
+            self.assertEqual("Staging upload", publisher["modeDetail"]["gateProgressLabel"])
+
+    def test_completed_handoffs_are_history_only_and_next_push_is_exact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            imports = root / "work/judah_library/imports"
+            completed = imports / "internet_archive_unit_009"
+            completed.mkdir(parents=True)
+            alberta = imports / "alberta_unit_001"
+            alberta.mkdir()
+            (alberta / "catalog.json").write_text(json.dumps({
+                "books": [{"id": str(index)} for index in range(68)],
+            }), encoding="utf-8")
+            (root / "alberta.json").write_text(json.dumps({
+                "currentRoot": str(alberta), "acceptedInCurrentBatch": 68,
+            }), encoding="utf-8")
+            completed_at = datetime.now(timezone.utc).isoformat()
+            (root / "publisher.json").write_text(json.dumps({
+                "listenerActive": True,
+                "checkedAt": completed_at,
+                "automaticAdvanceLog": [{
+                    "root": str(completed), "published": 690,
+                    "liveVerified": 690, "completedAt": completed_at,
+                }],
+                "queue": {"pendingUnits": 0},
+            }), encoding="utf-8")
+            (root / "handoffs.json").write_text(json.dumps({"handoffs": [{
+                "lane": "internet-archive", "root": str(completed), "books": 690,
+            }]}), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root), "pushHandoffsPath": "handoffs.json",
+                "lanes": [
+                    {"id": "university-of-alberta", "statePath": "alberta.json",
+                     "target": 2000},
+                    {"id": "publisher", "kind": "publisher",
+                     "statePath": "publisher.json"},
+                ],
+            }), encoding="utf-8")
+            controller = SweeperController(config_path)
+
+            publisher = controller.status()["lanes"][1]
+            self.assertEqual((0, 0), (publisher["accepted"], publisher["target"]))
+            self.assertEqual([], publisher["batchQueue"])
+            self.assertEqual(690, publisher["successHistory"][0]["liveVerified"])
+
+            controller.action("push", "university-of-alberta")
+            publisher = controller.status()["lanes"][1]
+            self.assertEqual((68, 68), (publisher["accepted"], publisher["target"]))
+            self.assertEqual(1, len(publisher["batchQueue"]))
+            self.assertEqual(68, publisher["batchQueue"][0]["books"])
+            self.assertEqual(str(alberta.resolve()), publisher["batchQueue"][0]["root"])
+
+    def test_completed_sub_one_percent_window_is_exhausted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "state.json").write_text(json.dumps({
+                "status": "complete", "stage": "complete",
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{
+                    "id": "princeton", "statePath": "state.json",
+                    "screeningCompleted": True,
+                    "screeningAccepted": 18, "screeningTotal": 2209,
+                }],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertTrue(lane["exhaustedSource"])
+            self.assertAlmostEqual(0.8148483476686283, lane["acceptanceRate"])
+
     def test_navigation_pool_is_bounded_and_source_specific(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

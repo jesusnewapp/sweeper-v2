@@ -400,9 +400,15 @@ class SweeperController:
             and age is not None
             and age <= 300
         )
-        running = str(state.get("status", "")).lower() == "running" or progress_active
-        if not running:
+        state_status = str(state.get("status", "")).lower()
+        running = state_status == "running" or progress_active
+        explicit_failure = bool(state.get("lastFailure")) or any(
+            marker in state_status for marker in ("failed", "error", "blocked")
+        )
+        if explicit_failure:
             health = "failed"
+        elif not running:
+            health = "watch"
         elif age is None or age > int(definition.get("redAfterSeconds", 3600)):
             health = "stuck"
         elif age > int(definition.get("watchAfterSeconds", 900)):
@@ -412,6 +418,30 @@ class SweeperController:
         display_accepted = accepted
         display_target = target
         detail = definition.get("detail", f"State: {state_path.name}")
+        handoff_path = self._path(str(self.config.get(
+            "pushHandoffsPath",
+            "work/judah_library/cache/web_sweeper_push_handoffs.json",
+        )))
+        handoffs = _read_json(handoff_path).get("handoffs", [])
+        pending_handoff = next((
+            row for row in reversed(handoffs)
+            if isinstance(row, dict)
+            and str(row.get("lane")) == lane_id
+            and Path(str(row.get("root"))).resolve() == Path(current_root).resolve()
+        ), None) if isinstance(handoffs, list) and current_root else None
+        if pending_handoff is not None:
+            handed_off = _count(pending_handoff.get("books"))
+            display_accepted = 0
+            display_target = _count(definition.get("target")) or target
+            detail = (
+                f"Next acquisition unit ready · {handed_off} approved books "
+                "handed to protected staging"
+            )
+        if state.get("lastFailure"):
+            detail = str(state["lastFailure"])
+            retry_seconds = _count(state.get("automaticRetrySeconds"))
+            if retry_seconds:
+                detail += f" · automatic retry every {retry_seconds}s"
         discovery_age = (
             (datetime.now(timezone.utc) - supplemental_observed).total_seconds()
             if supplemental_observed else None
@@ -451,9 +481,32 @@ class SweeperController:
             "navigationStatus": str(navigation.get("status", "")),
             "checkpointUpdatedAt": state_updated,
             "acceptedJournalCount": journal_accepted,
+            "handoffPending": pending_handoff is not None,
+            "handoffBooks": _count(pending_handoff.get("books"))
+            if pending_handoff is not None else 0,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
+        crawl_counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+        if crawl_counts:
+            mode_detail.update({
+                "pagesCompleted": _count(crawl_counts.get("visited")),
+                "candidateRecords": _count(crawl_counts.get("candidates")),
+                "discovered": _count(crawl_counts.get("candidates")),
+            })
+            if stage.casefold() == "bounded-frontier-complete":
+                mode = "discovery"
+                mode_detail.update({
+                    "mode": mode,
+                    "gateProgressLabel": "Bounded source inventory",
+                    "gateProgressCurrent": _count(crawl_counts.get("visited")),
+                    "gateProgressTarget": _count(crawl_counts.get("visited")),
+                    "nextStage": "Gate 0 identity and format preflight",
+                })
+                detail = (
+                    f"Inventory complete · {_count(crawl_counts.get('visited'))} pages · "
+                    f"{_count(crawl_counts.get('candidates'))} candidates · awaiting Gate 0 preflight"
+                )
         pages_completed = _count(mode_detail.get("pagesCompleted"))
         discovery_baseline = _count(state.get("discoveryPagesBaseline"))
         discovery_target = _count(state.get("discoveryPagesTarget"))
@@ -463,7 +516,7 @@ class SweeperController:
                 "gateProgressCurrent": max(0, pages_completed - discovery_baseline),
                 "gateProgressTarget": discovery_target,
             })
-        if progress_active:
+        if progress_active and pending_handoff is None:
             # Staging is already a defined lane phase. A partial survivor
             # upload must never masquerade as a new acquisition batch target.
             display_accepted = accepted
@@ -474,7 +527,21 @@ class SweeperController:
             _count(item.get("published")),
             _count(item.get("liveVerified")),
         ) for item in success_history)
-        accepted_cumulative = historical_accepted + accepted
+        accepted_cumulative = historical_accepted + max(
+            accepted,
+            _count(pending_handoff.get("books"))
+            if pending_handoff is not None else 0,
+        )
+        screening_completed = bool(definition.get("screeningCompleted", False))
+        screening_accepted = _count(definition.get("screeningAccepted"))
+        screening_total = _count(definition.get("screeningTotal"))
+        acceptance_rate = (
+            (100.0 * screening_accepted / screening_total)
+            if screening_completed and screening_total > 0 else None
+        )
+        exhausted_source = bool(
+            acceptance_rate is not None and acceptance_rate < 1.0
+        )
         accepted_evidence = [journal_observed]
         accepted_evidence.extend(_timestamp(item.get("completedAt")) for item in success_history)
         accepted_evidence = [value for value in accepted_evidence if value is not None]
@@ -499,6 +566,11 @@ class SweeperController:
             "modeDetail": mode_detail,
             "batchNumber": batch_number,
             "successHistory": success_history,
+            "screeningCompleted": screening_completed,
+            "screeningAccepted": screening_accepted,
+            "screeningTotal": screening_total,
+            "acceptanceRate": acceptance_rate,
+            "exhaustedSource": exhausted_source,
             "navigationQueries": navigation.get("queries", []),
             "progressEvidence": {
                 "stage": stage,
@@ -570,6 +642,14 @@ class SweeperController:
             "liveVerified": _count(row.get("liveVerified")),
             "completedAt": row.get("completedAt", ""),
         } for row in reversed(advances[-8:])] if isinstance(advances, list) else []
+        completed_roots = {
+            str(row.get("root") or "")
+            for row in advances
+            if isinstance(row, dict)
+            and str(row.get("root") or "")
+            and _count(row.get("published")) > 0
+            and _count(row.get("liveVerified")) >= _count(row.get("published"))
+        } if isinstance(advances, list) else set()
         batch_number = _batch_number(current_root)
         publication: Dict[str, Any] = {}
         promotion: Dict[str, Any] = {}
@@ -675,18 +755,86 @@ class SweeperController:
                 "status": queue_status,
                 "current": bool(current and root_value == current_root),
             })
-        if latest and str(latest.get("root") or "") not in {
-            item["root"] for item in batch_queue
-        }:
-            latest_root = str(latest.get("root") or "")
-            batch_queue.append({
-                "batchNumber": _batch_number(latest_root),
-                "name": Path(latest_root).name if latest_root else "last completed batch",
-                "root": latest_root,
-                "books": _count(latest.get("liveVerified")),
-                "status": "Completed · live-verified",
-                "current": False,
-            })
+        handoff_path = self._path(str(self.config.get(
+            "pushHandoffsPath",
+            "work/judah_library/cache/web_sweeper_push_handoffs.json",
+        )))
+        handoffs = _read_json(handoff_path).get("handoffs", [])
+        known_roots = {item["root"] for item in batch_queue}
+        if isinstance(handoffs, list):
+            for handoff in handoffs:
+                if not isinstance(handoff, dict):
+                    continue
+                root_value = str(handoff.get("root") or "")
+                # A permanent live-verification receipt retires the handoff from
+                # the active publisher card. Its totals belong exclusively in
+                # Success History; retaining it here makes a later push look
+                # cumulative (for example, completed 690 + new 68 = 758).
+                if (not root_value or root_value in known_roots
+                        or root_value in completed_roots):
+                    continue
+                root = Path(root_value)
+                receipt = _read_json(root / "staging_upload_receipt.json")
+                verification = _read_json(root / "staging_verification.json")
+                staging_progress = _read_json(root / "staging_upload_progress.json")
+                staged = max(
+                    _count(receipt.get("staged")),
+                    _count(verification.get("verified")),
+                )
+                requested = _count(handoff.get("books"))
+                staging_phase = str(staging_progress.get("phase") or "")
+                staging_uploaded = _count(staging_progress.get("uploaded"))
+                staging_target = _count(staging_progress.get("total")) or requested
+                if staging_phase and staging_phase != "complete":
+                    handoff_status = (
+                        f"Staging upload · {staging_uploaded}/{staging_target}"
+                    )
+                elif staged > 0:
+                    handoff_status = "Staged · waiting for publisher discovery"
+                else:
+                    handoff_status = "Approved handoff · preparing for staging"
+                batch_queue.append({
+                    "batchNumber": _batch_number(root_value),
+                    "name": root.name,
+                    "root": root_value,
+                    "books": staged or requested,
+                    "status": handoff_status,
+                    "stageProgressCurrent": staging_uploaded,
+                    "stageProgressTarget": staging_target,
+                    "current": False,
+                })
+                known_roots.add(root_value)
+        handoff_rows = [
+            item for item in batch_queue
+            if str(item.get("status", "")).startswith((
+                "Approved handoff", "Staging upload", "Staged · waiting",
+            ))
+        ]
+        if not current and handoff_rows:
+            active_staging = next((
+                item for item in handoff_rows
+                if str(item.get("status", "")).startswith("Staging upload")
+            ), None)
+            if active_staging is not None:
+                accepted = _count(active_staging.get("stageProgressCurrent"))
+                target = _count(active_staging.get("stageProgressTarget"))
+                phase_count = accepted
+                stage = "staging-upload"
+            else:
+                handoff_books = sum(_count(item.get("books")) for item in handoff_rows)
+                accepted = handoff_books
+                target = handoff_books
+                phase_count = handoff_books
+                stage = (
+                    "Staged · waiting for publisher discovery"
+                    if all(str(item.get("status", "")).startswith("Staged")
+                           for item in handoff_rows)
+                    else "Approved handoff · preparing for staging"
+                )
+            updated = max((
+                str(row.get("requestedAt") or "")
+                for row in handoffs if isinstance(row, dict)
+            ), default=updated)
         continuation = (
             state.get("automaticContinuation")
             if isinstance(state.get("automaticContinuation"), dict)
@@ -720,7 +868,16 @@ class SweeperController:
             "unitUpdatedAt": updated,
             "watcherCheckedAt": state.get("checkedAt", ""),
         }
-        if current and target > 0:
+        if not current and handoff_rows and target > 0:
+            mode_detail.update({
+                "gateProgressLabel": (
+                    "Staging upload" if stage == "staging-upload"
+                    else "Protected staging handoff"
+                ),
+                "gateProgressCurrent": phase_count,
+                "gateProgressTarget": target,
+            })
+        elif current and target > 0:
             gate_label = {
                 "storage-upload": "Storage upload",
                 "publication-complete": "Publishing",
@@ -845,16 +1002,23 @@ class SweeperController:
                 accepted = _count(lane.get("acceptedCumulative", lane.get("accepted")))
                 growth = self._accepted_growth_observations.get(lane_id)
                 if growth is None:
-                    growth = {"accepted": accepted, "lastGrowth": (
-                        _timestamp(lane.get("acceptedUpdatedAt")) if accepted > 0 else None
-                    )}
+                    growth = {
+                        "accepted": accepted,
+                        "lastGrowth": (
+                            _timestamp(lane.get("acceptedUpdatedAt")) if accepted > 0 else None
+                        ),
+                        "observedSince": _timestamp(lane.get("updatedAt")) or checked_at,
+                    }
                 elif accepted < _count(growth.get("accepted")):
                     # Quarantine/revocation is an integrity correction, not
                     # accepted-book growth. Preserve the last real increase so
                     # a freshly written rejection cannot turn health green.
-                    growth = {"accepted": accepted, "lastGrowth": growth.get("lastGrowth")}
+                    growth = {"accepted": accepted,
+                              "lastGrowth": growth.get("lastGrowth"),
+                              "observedSince": growth.get("observedSince", checked_at)}
                 elif accepted > _count(growth.get("accepted")):
-                    growth = {"accepted": accepted, "lastGrowth": checked_at}
+                    growth = {"accepted": accepted, "lastGrowth": checked_at,
+                              "observedSince": growth.get("observedSince", checked_at)}
                 self._accepted_growth_observations[lane_id] = growth
                 last_growth = growth.get("lastGrowth")
                 lane["acceptedGrowthSince"] = (
@@ -863,7 +1027,12 @@ class SweeperController:
                 )
                 if lane.get("health") != "failed":
                     if not isinstance(last_growth, datetime):
-                        lane["health"] = "watch"
+                        observed_since = growth.get("observedSince")
+                        no_growth_age = (
+                            (checked_at - observed_since).total_seconds()
+                            if isinstance(observed_since, datetime) else 0
+                        )
+                        lane["health"] = "watch" if no_growth_age <= 300 else "stuck"
                     else:
                         growth_age = (checked_at - last_growth).total_seconds()
                         lane["health"] = (
@@ -874,10 +1043,7 @@ class SweeperController:
         codex_live = _count(metrics.get("codexLive", self.config.get("codexLive", 0)))
         publisher_live = max((_count(lane.get("codexLive")) for lane in lanes), default=0)
         codex_live = max(codex_live, publisher_live, self._receipt_live_total())
-        lane_ids = {str(item.get("id", "")) for item in lanes}
-        workspace = str(self.config.get("workspace", "")).strip() or (
-            "world_books" if "translation-review" in lane_ids else "web_sweeper"
-        )
+        workspace = str(self.config.get("workspace", "")).strip() or "web_sweeper"
         return {
             "schemaVersion": 1,
             "workspace": workspace,
@@ -898,6 +1064,8 @@ class SweeperController:
 
     def action(self, action: str, lane_id: str) -> Dict[str, Any]:
         """Run only a command explicitly provided by the trusted host config."""
+        if action == "push":
+            return self._request_push(lane_id)
         actions = self.config.get("actions", {})
         definition = actions.get(action) if isinstance(actions, dict) else None
         if not isinstance(definition, dict):
@@ -918,6 +1086,92 @@ class SweeperController:
             start_new_session=True,
         )
         return {"accepted": True, "action": action, "lane": lane_id, "pid": process.pid}
+
+    def _request_push(self, lane_id: str) -> Dict[str, Any]:
+        """Freeze a positive survivor remainder for the normal staging path."""
+        lane = next((item for item in self.config.get("lanes", [])
+                     if isinstance(item, dict) and item.get("id") == lane_id), None)
+        if not isinstance(lane, dict) or lane.get("kind") == "publisher":
+            raise ValueError(f"push is not allowed for lane {lane_id}")
+        state_path = self._path(str(lane.get("statePath", "missing.json")))
+        state = _read_json(state_path)
+        root_value = str(state.get("currentRoot") or state.get("root") or "")
+        if not root_value:
+            raise ValueError(f"lane {lane_id} has no protected current root")
+        root = Path(root_value).resolve()
+        imports = (self.project_root / "work/judah_library/imports").resolve()
+        if imports not in root.parents:
+            raise ValueError("push root is outside the authoritative imports directory")
+        catalog = _read_json(root / "catalog.json").get("books", [])
+        books = len(catalog) if isinstance(catalog, list) else 0
+        if books < 1:
+            books, _ = self._accepted_journal_count(root / "progress.jsonl")
+        if books < 1:
+            raise ValueError("push requires at least one authoritative accepted survivor")
+        requested_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        request = {
+            "schemaVersion": 1,
+            "lane": lane_id,
+            "root": str(root),
+            "books": books,
+            "requestedAt": requested_at,
+            "action": "freeze-validate-and-stage-positive-remainder",
+        }
+        request_path = root / "operator_switch_request.json"
+        temporary = request_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(request, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(request_path)
+
+        handoff_path = self._path(str(self.config.get(
+            "pushHandoffsPath",
+            "work/judah_library/cache/web_sweeper_push_handoffs.json",
+        )))
+        ledger = _read_json(handoff_path)
+        handoffs = ledger.get("handoffs", [])
+        if not isinstance(handoffs, list):
+            handoffs = []
+        handoffs = [row for row in handoffs
+                    if isinstance(row, dict) and str(row.get("root")) != str(root)]
+        handoffs.append(request)
+        handoff_path.parent.mkdir(parents=True, exist_ok=True)
+        ledger_temporary = handoff_path.with_suffix(".json.tmp")
+        ledger_temporary.write_text(json.dumps({
+            "schemaVersion": 1,
+            "updatedAt": requested_at,
+            "handoffs": handoffs[-100:],
+        }, indent=2) + "\n", encoding="utf-8")
+        ledger_temporary.replace(handoff_path)
+
+        pid = None
+        if lane_id == "internet-archive":
+            command = [
+                "/usr/bin/python3", "-u",
+                "tool/run_internet_archive_staging_campaign.py",
+                "--start-unit", str(_count(state.get("currentUnit")) or _batch_number(root.name)),
+                "--units", "1",
+                "--target", str(_count(state.get("target")) or _count(lane.get("target")) or 2000),
+                "--workers", "2",
+                "--cache", str(state_path.parent),
+                "--state", str(state_path),
+                "--root-prefix", root.name.rsplit("_unit_", 1)[0],
+                "--source-profile", str(state.get("sourceProfile") or "americana"),
+                "--finalize-current-remainder",
+            ]
+            process = subprocess.Popen(
+                command, cwd=self.project_root, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            pid = process.pid
+        return {
+            "accepted": True,
+            "action": "push",
+            "lane": lane_id,
+            "books": books,
+            "root": str(root),
+            "status": "approved-handoff-preparing-for-staging",
+            "pid": pid,
+        }
 
     def save_preferences(self, preferences: Dict[str, Any]) -> None:
         """Atomically save harmless UI settings separately from host commands."""

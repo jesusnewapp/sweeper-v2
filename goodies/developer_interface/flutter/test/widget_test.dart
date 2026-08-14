@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:developer_interface/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +15,84 @@ Future<void> pumpAt(WidgetTester tester, Size size) async {
 }
 
 void main() {
+  test(
+    'authoritative stage mapping separates active acquisition, bounded inventory, and idle publisher',
+    () {
+      const archive = ModelView(
+        id: 'internet-archive',
+        name: 'Internet Archive',
+        stage: 'prepare',
+        accepted: 515,
+        target: 2000,
+        uploaded: 0,
+        health: Health.healthy,
+        detail: 'accepting',
+        modeDetail: {'acceptedJournalCount': 515},
+      );
+      const grey = ModelView(
+        id: 'global-grey-christianity',
+        name: 'Global Grey',
+        stage: 'bounded-frontier-complete',
+        accepted: 0,
+        target: 1000,
+        uploaded: 0,
+        health: Health.watch,
+        detail: 'inventory complete',
+      );
+      const publisher = ModelView(
+        id: 'publisher',
+        name: 'Publisher',
+        stage: 'Listening for next exact staged unit',
+        accepted: 0,
+        target: 0,
+        uploaded: 0,
+        health: Health.healthy,
+        detail: 'idle',
+      );
+      final archiveGate = gatePositionFor(archive);
+      final greyGate = gatePositionFor(grey);
+      final publisherGate = gatePositionFor(publisher);
+      expect(archiveGate.current, 2);
+      expect(greyGate.current, 3);
+      expect(
+        activeSubstageFor(archive, 2, pipelineSubstagesFor(archive, 2)),
+        pipelineSubstagesFor(archive, 2).length - 1,
+      );
+      expect(activeSubstageFor(grey, 3, pipelineSubstagesFor(grey, 3)), 0);
+      expect(
+        activeSubstageFor(publisher, 8, pipelineSubstagesFor(publisher, 8)),
+        pipelineSubstagesFor(publisher, 8).length - 1,
+      );
+    },
+  );
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('background refresh forces authoritative network status', () {
+    final source = Uri.file('lib/main.dart').toFilePath();
+    final text = File(source).readAsStringSync();
+    expect(text, contains('_connect(quiet: true, forceNetwork: true)'));
+  });
+
+  test('UI reset retains proven live cards until replacement succeeds', () {
+    final text = File('lib/main.dart').readAsStringSync();
+    expect(text, contains('Keep the last proven controller snapshot visible'));
+    expect(
+      text,
+      isNot(
+        contains(
+          "_connectionMessage = 'Resetting UI · loading authoritative status…';\n      _models = const []",
+        ),
+      ),
+    );
+  });
+
+  test('institutional card exposes receipt-safe lane clean reset', () {
+    final text = File('lib/main.dart').readAsStringSync();
+    expect(text, contains("ValueKey('clean-reset-\${model.id}')"));
+    expect(text, contains("_sendAction('clean-reset-lane'"));
+    expect(text, contains("if (model.id == 'google-books' &&"));
+  });
 
   test('live-index refresh stays in the active discovery gate', () {
     final model = ModelView.fromJson({
@@ -28,6 +107,60 @@ void main() {
     final gate = gatePositionFor(model);
     expect(gate.current, 2);
     expect(gate.total, 6);
+  });
+
+  test('completed sub-one-percent source is marked exhausted', () {
+    final model = ModelView.fromJson({
+      'id': 'princeton',
+      'name': 'Princeton',
+      'stage': 'complete',
+      'accepted': 18,
+      'target': 2000,
+      'health': 'stuck',
+      'exhaustedSource': true,
+      'acceptanceRate': 0.815,
+    });
+    expect(model.exhaustedSource, isTrue);
+    expect(model.acceptanceRate, 0.815);
+  });
+
+  testWidgets('exhausted source acceptance rate is visibly red', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'princeton',
+              name: 'Princeton',
+              stage: 'complete',
+              accepted: 18,
+              target: 2000,
+              uploaded: 18,
+              health: Health.stuck,
+              detail: 'Completed screening window',
+              exhaustedSource: true,
+              acceptanceRate: 0.815,
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 9,
+              since: since,
+            ),
+            stageObservation: StageObservation(stage: 'complete', since: since),
+            now: since,
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+
+    final rate = tester.widget<Text>(
+      find.byKey(const ValueKey('exhausted-rate-princeton')),
+    );
+    expect(rate.data, 'EXHAUSTED SOURCE · 0.815% accepted');
+    expect(rate.style?.color, const Color(0xffff5f6d));
   });
 
   test('discover and acquire focus follows the live controller operation', () {
@@ -59,12 +192,14 @@ void main() {
     await pumpAt(tester, const Size(1440, 1000));
     expect(find.text('Codex Live'), findsOneWidget);
     expect(find.byKey(const ValueKey('refresh-ui-button')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('workspace-toggle-button')),
-      findsOneWidget,
-    );
-    expect(find.text('World'), findsOneWidget);
+    expect(find.byKey(const ValueKey('workspace-toggle-button')), findsNothing);
     expect(find.text('Reset UI'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey('refresh-ui-button')))
+          .onPressed,
+      isNotNull,
+    );
     expect(find.byKey(const ValueKey('clean-sweep-button')), findsOneWidget);
     expect(find.text('Readable text color:'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -85,17 +220,6 @@ void main() {
       find.byKey(const ValueKey('confirm-clean-sweep-button')),
       findsOneWidget,
     );
-  });
-
-  testWidgets('workspace toggle switches to the isolated translator UI', (
-    tester,
-  ) async {
-    await pumpAt(tester, const Size(1440, 1000));
-    await tester.tap(find.byKey(const ValueKey('workspace-toggle-button')));
-    await tester.pump();
-    expect(find.text('WEB SWEEPER WORLD'), findsOneWidget);
-    expect(find.text('Translation & Manuscript Studio'), findsOneWidget);
-    expect(find.text('Web Sweeper'), findsOneWidget);
   });
 
   testWidgets('unchanged percentages show their age after ten seconds', (
@@ -131,7 +255,7 @@ void main() {
       ),
     );
     expect(find.textContaining('At 100.0% for'), findsOneWidget);
-    expect(find.text('Gate 6/7 · 11s'), findsOneWidget);
+    expect(find.text('Gate 7/8 · 11s'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -182,6 +306,23 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('CURRENT'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('substage-panel-open-library-2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('substage-meter-open-library')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Substage 1/10'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('card-substage-meter-open-library')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('card-substage-remaining-open-library')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('completed unit keeps a celebratory published state', (
@@ -453,7 +594,7 @@ void main() {
     expect(find.text('Promotion receipt'), findsOneWidget);
   });
 
-  testWidgets('push remains disabled until five minutes without movement', (
+  testWidgets('source push is immediately enabled with approved survivors', (
     tester,
   ) async {
     final since = DateTime.utc(2026, 1, 1);
@@ -463,14 +604,14 @@ void main() {
         home: Scaffold(
           body: ModelCard(
             model: const ModelView(
-              id: 'publisher',
-              name: 'Publisher',
-              stage: 'Listening for next exact staged unit',
-              accepted: 853,
-              target: 853,
-              uploaded: 853,
-              health: Health.watch,
-              detail: '0 ready',
+              id: 'internet-archive',
+              name: 'Internet Archive',
+              stage: 'prepare',
+              accepted: 680,
+              target: 2000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: '680 approved survivors',
             ),
             observation: ProgressObservation(
               progressTenthsPercent: 1000,
@@ -480,17 +621,15 @@ void main() {
               stage: 'Listening for next exact staged unit',
               since: since,
             ),
-            now: since.add(const Duration(minutes: 5)),
+            now: since.add(const Duration(seconds: 5)),
             onPush: () => pushes++,
           ),
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('push-publisher')));
+    await tester.tap(find.byKey(const ValueKey('push-internet-archive')));
     expect(pushes, 1);
     expect(find.text('Push'), findsOneWidget);
-    expect(find.text('Gate 7/7 · 300s'), findsOneWidget);
-    expect(find.text('Verification · stuck 5m 00s'), findsOneWidget);
   });
 
   testWidgets('four model slots expose name and connector fields', (
