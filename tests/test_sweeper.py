@@ -298,11 +298,13 @@ class SweeperV2Test(unittest.TestCase):
             self.assertEqual(2, result["counts"]["accepted"])
             self.assertFalse(result["continuationRequired"])
 
-    def test_translation_bridge_has_exact_ten_languages_and_fails_closed(self):
-        self.assertEqual(10, len(LANGUAGES))
+    def test_translation_bridge_has_world_books_languages_and_fails_closed(self):
+        self.assertGreaterEqual(len(LANGUAGES), 25)
+        for language in ("fr", "pl", "nl", "de", "es", "ja", "zh", "la"):
+            self.assertIn(language, LANGUAGES)
         self.assertEqual("SWEEPER_TRANSLATOR_IT_EN", engine_variable("it", "en"))
         status = capabilities()
-        self.assertEqual(90, len(status["pairs"]))
+        self.assertEqual(len(LANGUAGES) * (len(LANGUAGES) - 1), len(status["pairs"]))
 
     def test_translation_fleet_validates_stages_hands_off_and_queues_next(self):
         with tempfile.TemporaryDirectory() as directory:

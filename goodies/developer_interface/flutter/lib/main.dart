@@ -6,6 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+const _appMode = String.fromEnvironment(
+  'APP_MODE',
+  defaultValue: 'web_sweeper',
+);
+const _initialWorldBooks = _appMode == 'world_books';
+const _defaultEndpoint = String.fromEnvironment(
+  'CONTROLLER_URL',
+  defaultValue: 'http://127.0.0.1:8790',
+);
+const _webSweeperEndpoint = 'http://127.0.0.1:8790';
+const _worldBooksEndpoint = 'http://127.0.0.1:8791';
+
 void main() => runApp(const WebSweeperDeveloperApp());
 
 class WebSweeperDeveloperApp extends StatefulWidget {
@@ -46,7 +58,9 @@ class _WebSweeperDeveloperAppState extends State<WebSweeperDeveloperApp> {
     final base = ThemeData.dark(useMaterial3: true);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Web Sweeper Developer Interface',
+      title: _initialWorldBooks
+          ? 'Web Sweeper World'
+          : 'Web Sweeper Developer Interface',
       theme: base.copyWith(
         scaffoldBackgroundColor: const Color(0xff07110d),
         colorScheme: ColorScheme.fromSeed(
@@ -110,7 +124,8 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   bool _hasLiveData = false;
   int _codexLive = 0;
   int _confirmedStaged = 0;
-  String _endpoint = 'http://127.0.0.1:8790';
+  String _endpoint = _defaultEndpoint;
+  bool _worldBooksMode = _initialWorldBooks;
   String _token = '';
   String _connectionMessage = 'Local controller not connected';
   Timer? _progressTimer;
@@ -260,11 +275,43 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   Future<void> _restoreConnection() async {
     final preferences = await SharedPreferences.getInstance();
     if (!mounted) return;
+    final endpointKey = _worldBooksMode
+        ? 'world_books_controller_endpoint'
+        : 'controller_endpoint';
     setState(() {
-      _endpoint = preferences.getString('controller_endpoint') ?? _endpoint;
+      _endpoint = preferences.getString(endpointKey) ?? _endpoint;
       _token = preferences.getString('controller_token') ?? '';
     });
     await _connect(quiet: true);
+  }
+
+  Future<void> _switchWorkspace() async {
+    if (_connecting) return;
+    final worldBooks = !_worldBooksMode;
+    final preferences = await SharedPreferences.getInstance();
+    final endpointKey = worldBooks
+        ? 'world_books_controller_endpoint'
+        : 'controller_endpoint';
+    final fallback = worldBooks ? _worldBooksEndpoint : _webSweeperEndpoint;
+    if (!mounted) return;
+    setState(() {
+      _worldBooksMode = worldBooks;
+      _endpoint = preferences.getString(endpointKey) ?? fallback;
+      _hasLiveData = false;
+      _codexLive = 0;
+      _confirmedStaged = 0;
+      _models = const [];
+      _progressObservations.clear();
+      _stageObservations.clear();
+      _loggedProgressObservations.clear();
+      _connectionMessage = 'Switching independent controller…';
+    });
+    await _connect(quiet: true, resetUiObservations: true, forceNetwork: true);
+    if (mounted) {
+      _notice(
+        worldBooks ? 'Web Sweeper World connected' : 'Web Sweeper connected',
+      );
+    }
   }
 
   Future<bool> _connect({
@@ -300,7 +347,12 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
       }
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final preferences = await SharedPreferences.getInstance();
-      await preferences.setString('controller_endpoint', _endpoint);
+      await preferences.setString(
+        _worldBooksMode
+            ? 'world_books_controller_endpoint'
+            : 'controller_endpoint',
+        _endpoint,
+      );
       await preferences.setString('controller_token', _token);
       final lanes = payload['lanes'];
       final parsedModels = lanes is List
@@ -467,6 +519,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final compactHeader = MediaQuery.sizeOf(context).width < 620;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -476,20 +529,22 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.asset(
-                'assets/sweeper-logo.png',
+                _worldBooksMode
+                    ? 'assets/websweeper-world.png'
+                    : 'assets/sweeper-logo.png',
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'WEB SWEEPER',
+                    _worldBooksMode ? 'WEB SWEEPER WORLD' : 'WEB SWEEPER',
                     maxLines: 1,
                     overflow: TextOverflow.fade,
                     softWrap: false,
@@ -500,7 +555,9 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                     ),
                   ),
                   Text(
-                    'Developer Interface',
+                    _worldBooksMode
+                        ? 'Translation & Manuscript Studio'
+                        : 'Developer Interface',
                     maxLines: 1,
                     overflow: TextOverflow.fade,
                     softWrap: false,
@@ -512,6 +569,25 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           ],
         ),
         actions: [
+          if (compactHeader)
+            IconButton(
+              key: const ValueKey('workspace-toggle-button'),
+              onPressed: _connecting ? null : _switchWorkspace,
+              tooltip: _worldBooksMode ? 'Web Sweeper' : 'Web Sweeper World',
+              icon: Icon(
+                _worldBooksMode ? Icons.home_outlined : Icons.public_rounded,
+              ),
+            )
+          else
+            TextButton.icon(
+              key: const ValueKey('workspace-toggle-button'),
+              onPressed: _connecting ? null : _switchWorkspace,
+              icon: Icon(
+                _worldBooksMode ? Icons.home_outlined : Icons.public_rounded,
+                size: 18,
+              ),
+              label: Text(_worldBooksMode ? 'Web Sweeper' : 'World'),
+            ),
           TextButton.icon(
             key: const ValueKey('refresh-ui-button'),
             onPressed: _connecting ? null : _manualRefresh,
@@ -1403,6 +1479,17 @@ List<String> pipelineStagesFor(ModelView model) {
   return model.id == 'publisher' ? publisherStages : sourceStages;
 }
 
+String discoveryAcquisitionFocus(ModelView model) {
+  final signal = '${model.stage} ${model.mode}'.toLowerCase();
+  if (signal.contains('acquir') ||
+      signal.contains('download') ||
+      signal.contains('fetch') ||
+      signal.contains('import')) {
+    return 'acquire';
+  }
+  return 'discover';
+}
+
 GatePosition gatePositionFor(ModelView model) {
   final stage = model.stage.toLowerCase().replaceAll('_', '-');
   if (model.id == 'publisher') {
@@ -1649,6 +1736,7 @@ class ModelCard extends StatelessWidget {
 
   void _showExactStage(BuildContext context, GatePosition gate) {
     final stages = pipelineStagesFor(model);
+    final discoveryFocus = discoveryAcquisitionFocus(model);
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1700,15 +1788,53 @@ class ModelCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 9),
                       Expanded(
-                        child: Text(
-                          '${index + 1}. ${stages[index]}',
-                          style: TextStyle(
-                            fontWeight: index + 1 == gate.current
-                                ? FontWeight.w900
-                                : FontWeight.w600,
-                            color: index + 1 == gate.current ? color : null,
-                          ),
-                        ),
+                        child: index == 1 && model.id != 'publisher'
+                            ? Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  const Text('2. '),
+                                  Text(
+                                    'Discover',
+                                    key: ValueKey(
+                                      'exact-stage-${model.id}-discover',
+                                    ),
+                                    style: TextStyle(
+                                      fontWeight: discoveryFocus == 'discover'
+                                          ? FontWeight.w900
+                                          : FontWeight.w600,
+                                      color: discoveryFocus == 'discover'
+                                          ? color
+                                          : const Color(0xff83a891),
+                                    ),
+                                  ),
+                                  const Text(' & '),
+                                  Text(
+                                    'Acquire',
+                                    key: ValueKey(
+                                      'exact-stage-${model.id}-acquire',
+                                    ),
+                                    style: TextStyle(
+                                      fontWeight: discoveryFocus == 'acquire'
+                                          ? FontWeight.w900
+                                          : FontWeight.w600,
+                                      color: discoveryFocus == 'acquire'
+                                          ? color
+                                          : const Color(0xff83a891),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                '${index + 1}. ${stages[index]}',
+                                style: TextStyle(
+                                  fontWeight: index + 1 == gate.current
+                                      ? FontWeight.w900
+                                      : FontWeight.w600,
+                                  color: index + 1 == gate.current
+                                      ? color
+                                      : null,
+                                ),
+                              ),
                       ),
                       if (index + 1 == gate.current)
                         const Text(

@@ -30,6 +30,23 @@ void main() {
     expect(gate.total, 6);
   });
 
+  test('discover and acquire focus follows the live controller operation', () {
+    final discovering = ModelView.fromJson({
+      'id': 'source',
+      'stage': 'discover',
+      'accepted': 0,
+      'target': 10,
+    });
+    final acquiring = ModelView.fromJson({
+      'id': 'source',
+      'stage': 'acquiring-text',
+      'accepted': 0,
+      'target': 10,
+    });
+    expect(discoveryAcquisitionFocus(discovering), 'discover');
+    expect(discoveryAcquisitionFocus(acquiring), 'acquire');
+  });
+
   testWidgets('phone layout renders without overflow', (tester) async {
     await pumpAt(tester, const Size(390, 844));
     expect(find.text('WEB SWEEPER'), findsOneWidget);
@@ -42,9 +59,25 @@ void main() {
     await pumpAt(tester, const Size(1440, 1000));
     expect(find.text('Codex Live'), findsOneWidget);
     expect(find.byKey(const ValueKey('refresh-ui-button')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workspace-toggle-button')),
+      findsOneWidget,
+    );
+    expect(find.text('World'), findsOneWidget);
     expect(find.text('Refresh UI'), findsOneWidget);
     expect(find.text('Readable text color:'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('workspace toggle switches to the isolated translator UI', (
+    tester,
+  ) async {
+    await pumpAt(tester, const Size(1440, 1000));
+    await tester.tap(find.byKey(const ValueKey('workspace-toggle-button')));
+    await tester.pump();
+    expect(find.text('WEB SWEEPER WORLD'), findsOneWidget);
+    expect(find.text('Translation & Manuscript Studio'), findsOneWidget);
+    expect(find.text('Web Sweeper'), findsOneWidget);
   });
 
   testWidgets('unchanged percentages show their age after ten seconds', (
@@ -122,7 +155,14 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('1. Initialize'), findsOneWidget);
-    expect(find.text('2. Discover / acquire'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('exact-stage-open-library-discover')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('exact-stage-open-library-acquire')),
+      findsOneWidget,
+    );
     expect(find.text('CURRENT'), findsOneWidget);
   });
 

@@ -264,8 +264,9 @@ class SweeperController:
                     try:
                         event = json.loads(raw)
                         identity = str(
-                            event.get("id") or event.get("archiveId") or
-                            (event.get("identifiers") or {}).get("archive") or ""
+                            event.get("archiveId") or
+                            (event.get("identifiers") or {}).get("archive") or
+                            event.get("id") or ""
                         ).strip()
                         if event.get("kind") == "accepted" and identity:
                             accepted_ids.add(identity)

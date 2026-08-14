@@ -140,6 +140,38 @@ The Goodies collection also includes a cross-platform
 [`Developer Interface`](goodies/developer_interface/) for monitoring and
 explicitly configured control of authorized deployments.
 
+## Web Sweeper World
+
+**Web Sweeper World** extends the developer interface with an isolated
+translation-and-manuscript workspace. The World toggle changes the logo,
+controller endpoint, and visible lane state while the ordinary Web Sweeper
+circuit continues independently. A World deployment uses its own Python
+process, configuration, workspace, review queue, and translated-staging
+collection; switching the UI never merges those circuits.
+
+World currently recognizes and routes 35 language codes. Translation engines
+are installed separately per language pair, so recognizing a language is not a
+claim that every model is bundled or validated. Complete source text is
+preserved and hashed, translated into a structured manuscript, screened for
+basic target-language readability, and placed in an approval queue. Translation
+success never authorizes staging or publication. Rights, completeness,
+relevance, global deduplication, independent review, and the operator's live
+writer boundary remain mandatory.
+
+This architecture can help responsible institutions bridge language silos when
+building lawful worldwide knowledge collections—for example public-domain or
+openly licensed medical history and case studies, scientific literature,
+exploration records, legal history, educational works, and cultural archives.
+That is a meaningful innovation in access: material formerly isolated by
+language can enter one governed research workflow while retaining its original
+text and provenance. It does not make restricted material public, replace
+professional medical or legal judgment, or guarantee that machine translation
+is accurate. Sensitive or consequential collections require appropriate
+licenses, privacy protection, domain experts, and human validation.
+
+See [`docs/WORLD_BOOKS.md`](docs/WORLD_BOOKS.md) for the pipeline and local
+controller example.
+
 ## Reusable projects and collection goals
 
 Each configuration is a named project that can be saved and loaded later. A

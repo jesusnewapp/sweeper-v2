@@ -299,6 +299,29 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(0, lane["accepted"])
             self.assertEqual(before, lane["acceptedGrowthSince"])
 
+    def test_archive_identity_rejection_revokes_generated_codex_acceptance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_001"
+            unit.mkdir()
+            progress = unit / "progress.jsonl"
+            progress.write_text(
+                json.dumps({"kind": "accepted", "id": "generated-id",
+                            "identifiers": {"archive": "source-id"}}) + "\n" +
+                json.dumps({"kind": "rejected", "archiveId": "source-id"}) + "\n"
+            )
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "prepare", "currentRoot": str(unit),
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }))
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual(0, lane["accepted"])
+            self.assertEqual(0, lane["modeDetail"]["acceptedJournalCount"])
+
     def test_unconfigured_actions_are_disabled(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
