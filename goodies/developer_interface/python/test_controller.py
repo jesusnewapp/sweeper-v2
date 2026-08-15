@@ -36,6 +36,29 @@ class JsonReadCacheTest(unittest.TestCase):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_retired_open_library_receipts_remain_in_archived_source_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            receipt_root = root / "work/judah_library/imports/open_library_batch_0001"
+            receipt_root.mkdir(parents=True)
+            (receipt_root / "staging_verification.json").write_text(json.dumps({
+                "verified": 1643, "productionMutated": False,
+            }))
+            (receipt_root / "promotion_validation.json").write_text(json.dumps({
+                "status": "published-and-five-gate-verified",
+                "published": 1643, "liveVerified": 1643,
+                "completedAt": "2026-08-13T18:11:42Z",
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root), "lanes": [],
+            }))
+            archived = SweeperController(config_path).status()["archivedSources"]
+            self.assertEqual(1, len(archived))
+            self.assertEqual("Open Library", archived[0]["name"])
+            self.assertEqual(1643, archived[0]["liveVerified"])
+            self.assertEqual(1, archived[0]["receiptCount"])
+
     def test_acquisition_red_flag_starts_only_after_five_minutes_without_growth(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -97,7 +120,8 @@ class ControllerTests(unittest.TestCase):
             lanes = controller.status()["lanes"]
             source = lanes[0]
             publisher = lanes[1]
-            self.assertEqual((0, 2000), (source["accepted"], source["target"]))
+            self.assertEqual((65, 65), (source["accepted"], source["target"]))
+            self.assertEqual("staging", source["modeDetail"]["custodyStage"])
             self.assertEqual(65, source["acceptedCumulative"])
             self.assertEqual((65, 65), (publisher["accepted"], publisher["target"]))
             self.assertEqual(65, publisher["batchQueue"][0]["books"])

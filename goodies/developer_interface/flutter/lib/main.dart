@@ -118,6 +118,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
   int _codexLive = 0;
   int _confirmedStaged = 0;
   int _optimizationPoints = 0;
+  List<ArchivedSourceView> _archivedSources = const [];
   String _endpoint = _defaultEndpoint;
   String _token = '';
   String _connectionMessage = 'Local controller not connected';
@@ -348,6 +349,17 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                 )
                 .toList()
           : null;
+      final archived = payload['archivedSources'];
+      final parsedArchived = archived is List
+          ? archived
+                .whereType<Map>()
+                .map(
+                  (raw) => ArchivedSourceView.fromJson(
+                    Map<String, dynamic>.from(raw),
+                  ),
+                )
+                .toList()
+          : const <ArchivedSourceView>[];
       if (!mounted) return false;
       setState(() {
         _codexLive = (payload['codexLive'] as num?)?.toInt() ?? _codexLive;
@@ -368,6 +380,7 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
           _models = parsedModels;
           _hasLiveData = true;
         }
+        _archivedSources = parsedArchived;
         _connectionMessage = 'Connected · live controller data';
       });
       return true;
@@ -840,14 +853,20 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                       return Wrap(
                         spacing: 12,
                         runSpacing: 12,
-                        children: _models
-                            .map(
-                              (model) => SizedBox(
-                                width: width,
-                                child: _successHistoryCard(model),
-                              ),
-                            )
-                            .toList(),
+                        children: [
+                          ..._models.map(
+                            (model) => SizedBox(
+                              width: width,
+                              child: _successHistoryCard(model),
+                            ),
+                          ),
+                          ..._archivedSources.map(
+                            (source) => SizedBox(
+                              width: width,
+                              child: _archivedSourceCard(source),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -910,6 +929,36 @@ class _DeveloperDashboardState extends State<DeveloperDashboard> {
                     ],
                   ),
                 ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _archivedSourceCard(ArchivedSourceView source) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${source.name} · Protected history',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              '${source.liveVerified} live-verified · ${source.receiptCount} permanent receipts',
+              style: const TextStyle(
+                color: Color(0xff64dc98),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Retired from active lanes · books remain protected and counted',
+              style: TextStyle(color: Color(0xff83a891), fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -1510,6 +1559,26 @@ class ActivityEntry {
 }
 
 enum Health { healthy, watch, stuck, failed }
+
+class ArchivedSourceView {
+  const ArchivedSourceView({
+    required this.name,
+    required this.liveVerified,
+    required this.receiptCount,
+  });
+
+  final String name;
+  final int liveVerified;
+  final int receiptCount;
+
+  factory ArchivedSourceView.fromJson(Map<String, dynamic> json) {
+    return ArchivedSourceView(
+      name: json['name'] as String? ?? 'Archived source',
+      liveVerified: (json['liveVerified'] as num?)?.toInt() ?? 0,
+      receiptCount: (json['receiptCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
 
 class ModelView {
   const ModelView({
@@ -2509,13 +2578,17 @@ class ModelCard extends StatelessWidget {
         model.accepted > 0 &&
         (normalizedStage.contains('validation-complete') ||
             normalizedStage.contains('acquisition-complete'));
-    final uiStuck = !sourceReadyToStage && heldFor.inMinutes >= 5;
+    final capacityProtected = normalizedStage.contains('capacity-protected');
+    final uiStuck =
+        !sourceReadyToStage && !capacityProtected && heldFor.inMinutes >= 5;
     final uiActive =
         !publisherIdle &&
         !uiStuck &&
         model.health != Health.failed &&
         heldFor.inSeconds <= 60;
-    final activityColor = sourceReadyToStage
+    final activityColor = capacityProtected
+        ? const Color(0xffffd166)
+        : sourceReadyToStage
         ? const Color(0xff35d07f)
         : uiStuck
         ? const Color(0xffff4d67)
@@ -2524,7 +2597,9 @@ class ModelCard extends StatelessWidget {
         : publisherIdle
         ? const Color(0xff83a891)
         : const Color(0xfff5d142);
-    final activityLabel = sourceReadyToStage
+    final activityLabel = capacityProtected
+        ? 'Accepted books protected'
+        : sourceReadyToStage
         ? 'Ready to stage'
         : uiStuck
         ? 'Stuck'

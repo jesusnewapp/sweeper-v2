@@ -429,13 +429,32 @@ class SweeperController:
             and str(row.get("lane")) == lane_id
             and Path(str(row.get("root"))).resolve() == Path(current_root).resolve()
         ), None) if isinstance(handoffs, list) and current_root else None
+        staging_receipt = _read_json(
+            Path(current_root) / "staging_upload_receipt.json"
+        ) if current_root else {}
+        promotion_receipt = _read_json(
+            Path(current_root) / "promotion_validation.json"
+        ) if current_root else {}
+        staged_custody = _count(staging_receipt.get("staged"))
+        live_custody = _count(promotion_receipt.get("liveVerified"))
         if pending_handoff is not None:
             handed_off = _count(pending_handoff.get("books"))
-            display_accepted = 0
-            display_target = _count(definition.get("target")) or target
+            # Custody moves to staging, but the accepted books remain visible
+            # on their source card until a permanent live receipt exists.
+            display_accepted = handed_off
+            display_target = handed_off
             detail = (
-                f"Next acquisition unit ready · {handed_off} approved books "
-                "handed to protected staging"
+                f"{handed_off} accepted books protected · handed to staging"
+            )
+        if staged_custody > 0 and live_custody < staged_custody:
+            display_accepted = staged_custody
+            display_target = staged_custody
+            detail = f"{staged_custody} accepted books protected · publisher custody"
+        restored_live = _count(checkpoint.get("restoredLiveOverlapCount"))
+        if restored_live > 0 and staged_custody == 0:
+            detail = (
+                f"{accepted} accepted books protected · {restored_live} reconciled "
+                "as already live"
             )
         if state.get("lastFailure"):
             detail = str(state["lastFailure"])
@@ -484,6 +503,17 @@ class SweeperController:
             "handoffPending": pending_handoff is not None,
             "handoffBooks": _count(pending_handoff.get("books"))
             if pending_handoff is not None else 0,
+            "custodyStage": (
+                "live-verified" if live_custody > 0
+                else "publisher" if staged_custody > 0
+                else "staging" if pending_handoff is not None
+                else "acquisition"
+            ),
+            "custodyBooks": live_custody or staged_custody or (
+                _count(pending_handoff.get("books"))
+                if pending_handoff is not None else accepted
+            ),
+            "alreadyLiveReconciled": restored_live,
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
@@ -494,7 +524,18 @@ class SweeperController:
                 "candidateRecords": _count(crawl_counts.get("candidates")),
                 "discovered": _count(crawl_counts.get("candidates")),
             })
-            if stage.casefold() in {"validation-running", "validation-complete"}:
+            if stage.casefold() == "capacity-protected":
+                mode = "acquisition"
+                mode_detail.update({
+                    "mode": mode,
+                    "substageProgressLabel": "Accepted books protected",
+                    "substageProgressCurrent": accepted,
+                    "substageProgressTarget": accepted or target,
+                    "nextStage": "Resume after the 1 GiB capacity floor is restored",
+                })
+                detail = str(state.get("capacityMessage") or
+                             "Not enough space · accepted books protected")
+            elif stage.casefold() in {"validation-running", "validation-complete"}:
                 validation_current = _count(state.get("validationCurrent"))
                 validation_target = _count(state.get("validationTarget")) or accepted
                 mode = "acquisition"
@@ -1047,11 +1088,49 @@ class SweeperController:
                 total = max(total, _count(receipt.get("publishedLiveTotal")))
         return total
 
+    def _archived_source_history(self, active_ids: set[str]) -> List[Dict[str, Any]]:
+        """Keep retired source receipts visible without reactivating their lanes."""
+        definitions = (
+            ("open-library", "Open Library", "open_library_"),
+            ("library-of-congress", "Library of Congress", "library_of_congress_"),
+            ("internet-archive", "Internet Archive", "internet_archive_"),
+            ("global-grey", "Global Grey Ebooks", "global_grey_"),
+        )
+        archived: List[Dict[str, Any]] = []
+        imports = self.project_root / "work/judah_library/imports"
+        for lane_id, name, prefix in definitions:
+            if lane_id in active_ids:
+                continue
+            history = self._source_success_history(
+                lane_id, {"historyPrefix": prefix}
+            )
+            if not history:
+                continue
+            permanent_receipts = []
+            for path in imports.glob(f"{prefix}*/promotion_validation.json"):
+                receipt = _read_json(path)
+                if receipt.get("status") in {
+                        "published-and-five-gate-verified",
+                        "already-live-and-five-gate-accounted"}:
+                    permanent_receipts.append(receipt)
+            archived.append({
+                "id": lane_id,
+                "name": name,
+                "liveVerified": sum(
+                    _count(item.get("liveVerified"))
+                    for item in permanent_receipts
+                ),
+                "receiptCount": len(permanent_receipts),
+                "successHistory": history,
+            })
+        return archived
+
     def status(self) -> Dict[str, Any]:
         lanes = [self._lane(item) for item in self.config.get("lanes", []) if isinstance(item, dict)]
         checked_at = datetime.now(timezone.utc)
         metrics = self._metrics()
         active_ids = {str(lane["id"]) for lane in lanes}
+        archived_sources = self._archived_source_history(active_ids)
         self._progress_observations = {
             lane_id: observation
             for lane_id, observation in self._progress_observations.items()
@@ -1138,6 +1217,7 @@ class SweeperController:
             "confirmedStaged": _count(metrics.get("confirmedStaged")),
             "metricsCheckedAt": metrics.get("checkedAt", ""),
             "lanes": lanes,
+            "archivedSources": archived_sources,
             "allHealthy": bool(lanes) and all(item["health"] == "healthy" for item in lanes),
             "productionWriterLimit": 1,
             "optimizationStandard": {
