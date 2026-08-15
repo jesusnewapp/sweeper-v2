@@ -62,9 +62,10 @@ class ControllerTests(unittest.TestCase):
                 }],
             }))
             lane = SweeperController(config).status()["lanes"][0]
-            self.assertEqual((1202, 1202), (lane["accepted"], lane["target"]))
+            self.assertEqual((0, 2000), (lane["accepted"], lane["target"]))
+            self.assertEqual("ready-for-next-batch", lane["stage"])
             self.assertEqual("live-verified", lane["modeDetail"]["custodyStage"])
-            self.assertIn("1 duplicate already live", lane["detail"])
+            self.assertIn("1 duplicate was already live", lane["detail"])
 
     def test_retired_open_library_receipts_remain_in_archived_source_history(self):
         with tempfile.TemporaryDirectory() as temporary:

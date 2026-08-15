@@ -456,14 +456,18 @@ class SweeperController:
             detail = f"{staged_custody} accepted books protected · publisher custody"
         elif staged_custody > 0 and permanent_live_receipt:
             already_live = max(0, staged_custody - live_custody)
-            display_accepted = staged_custody
-            display_target = staged_custody
+            # A completed unit belongs in immutable Success History, not in
+            # the active card. The operating card now represents only the
+            # next/current acquisition unit.
+            display_accepted = 0
+            display_target = _count(definition.get("target")) or target
+            stage = "ready-for-next-batch"
             detail = (
-                f"{staged_custody} accepted books fully accounted · "
-                f"{live_custody} newly live-verified"
+                f"Previous batch complete · {staged_custody} fully accounted "
+                "in Success History"
             )
             if already_live:
-                detail += f" · {already_live} duplicate already live"
+                detail += f" · {already_live} duplicate was already live"
         restored_live = _count(checkpoint.get("restoredLiveOverlapCount"))
         if restored_live > 0 and staged_custody == 0:
             detail = (
