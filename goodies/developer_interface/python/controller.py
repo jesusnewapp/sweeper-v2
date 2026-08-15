@@ -352,6 +352,7 @@ class SweeperController:
             accepted = 0
         target = int(_first(state, ("currentBatchSize", "batchSize", "target"), definition.get("target", 0)) or 0)
         uploaded = int(_first(progress, ("uploaded", "uploadedCount", "verified"), 0) or 0)
+        display_uploaded = uploaded
         progress_phase = str(progress.get("phase", ""))
         progress_total = int(progress.get("total") or accepted or target)
         staged_complete = bool(
@@ -460,6 +461,7 @@ class SweeperController:
             # the active card. The operating card now represents only the
             # next/current acquisition unit.
             display_accepted = 0
+            display_uploaded = 0
             display_target = _count(definition.get("target")) or target
             stage = "ready-for-next-batch"
             detail = (
@@ -510,7 +512,7 @@ class SweeperController:
                                         _first(state, ("prefiltered", "prefilteredCount"), 0))),
             "discoveryFrontier": _count(_first(state, ("discoveryFrontier", "frontier"), 0)),
             "candidateOffset": _count(_first(state, ("candidateOffset", "cursor", "page"), 0)),
-            "uploaded": uploaded,
+            "uploaded": display_uploaded,
             "uploadTarget": int(progress.get("total") or target),
             "completionState": "staged" if staged_complete else "",
             "batchNumber": batch_number,
@@ -535,6 +537,13 @@ class SweeperController:
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
+        if stage.casefold() == "ready-for-next-batch":
+            mode_detail.update({
+                "substageProgressLabel": "Waiting for next batch",
+                "substageProgressCurrent": 0,
+                "substageProgressTarget": 1,
+                "nextStage": "Acquire lane lock when the next batch starts",
+            })
         crawl_counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
         if crawl_counts:
             mode_detail.update({
@@ -687,7 +696,7 @@ class SweeperController:
             "acceptedCumulative": accepted_cumulative,
             "acceptedUpdatedAt": accepted_updated_at,
             "target": display_target,
-            "uploaded": uploaded,
+            "uploaded": display_uploaded,
             "health": health,
             "detail": detail,
             "updatedAt": updated,
@@ -705,7 +714,7 @@ class SweeperController:
             "progressEvidence": {
                 "stage": stage,
                 "accepted": accepted,
-                "uploaded": uploaded,
+                "uploaded": display_uploaded,
                 "discovered": _count(_first(checkpoint, ("discovered", "discoveredCount"),
                                            _first(state, ("discovered", "discoveredCount"), 0))),
                 "prefiltered": _count(_first(checkpoint, ("prefiltered", "prefilteredCount"),

@@ -63,6 +63,8 @@ class ControllerTests(unittest.TestCase):
             }))
             lane = SweeperController(config).status()["lanes"][0]
             self.assertEqual((0, 2000), (lane["accepted"], lane["target"]))
+            self.assertEqual(0, lane["uploaded"])
+            self.assertEqual(0, lane["modeDetail"]["uploaded"])
             self.assertEqual("ready-for-next-batch", lane["stage"])
             self.assertEqual("live-verified", lane["modeDetail"]["custodyStage"])
             self.assertIn("1 duplicate was already live", lane["detail"])

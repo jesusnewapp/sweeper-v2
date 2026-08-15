@@ -2278,7 +2278,6 @@ class ModelCard extends StatelessWidget {
     final active = activeSubstageFor(model, gateNumber, substages);
     final progress = authoritativeSubstageProgress(model);
     final substageComplete = progress != null && progress >= 1.0;
-    final activityPulse = ((now.second % 10) + 1) / 10;
     final liveLabel =
         '${model.modeDetail['substageProgressLabel'] ?? substages[active]}';
     return Container(
@@ -2308,7 +2307,7 @@ class ModelCard extends StatelessWidget {
                 ),
                 Text(
                   progress == null
-                      ? 'Live activity'
+                      ? '0.0% measured'
                       : '${((1 - progress) * 100).toStringAsFixed(1)}% left',
                   key: ValueKey('substage-percent-${model.id}'),
                   style: TextStyle(
@@ -2323,7 +2322,7 @@ class ModelCard extends StatelessWidget {
           if (!substageComplete)
             LinearProgressIndicator(
               key: ValueKey('substage-meter-${model.id}'),
-              value: progress ?? activityPulse,
+              value: progress ?? 0.0,
               minHeight: 6,
               borderRadius: BorderRadius.circular(8),
               backgroundColor: const Color(0xff173426),
@@ -2933,7 +2932,7 @@ class ModelCard extends StatelessWidget {
                   ),
                   Text(
                     substageProgress == null
-                        ? 'Measuring live…'
+                        ? '0.0% measured'
                         : '${((1 - substageProgress) * 100).toStringAsFixed(1)}% left',
                     key: ValueKey('card-substage-remaining-${model.id}'),
                     style: const TextStyle(
@@ -2947,7 +2946,7 @@ class ModelCard extends StatelessWidget {
             if (!substageComplete)
               LinearProgressIndicator(
                 key: ValueKey('card-substage-meter-${model.id}'),
-                value: substageProgress ?? activityPulse,
+                value: substageProgress ?? 0.0,
                 minHeight: 5,
                 borderRadius: BorderRadius.circular(8),
                 backgroundColor: const Color(0xff173426),
