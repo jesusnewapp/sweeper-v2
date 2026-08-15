@@ -26,6 +26,8 @@ def response(handler: BaseHTTPRequestHandler, status: int, payload: Dict[str, An
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+    handler.send_header("Pragma", "no-cache")
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

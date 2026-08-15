@@ -11,6 +11,10 @@ It includes:
 - green, yellow, orange, and red lane states;
 - a color-coded `Gate X/Y · Ns` sweep signal on every lane (six acquisition gates and seven publisher gates);
 - exact counters that refresh independently from the gate timer;
+- accepted-growth health that never mistakes retrieval activity or a heartbeat
+  for newly accepted material;
+- cache-free controller responses so a UI reset or background refresh requests
+  the current authoritative stage and staging custody;
 - an elapsed timer after the complete durable progress vector remains unchanged for 10 seconds;
 - a per-lane Push control that remains disabled until five minutes without any progress evidence, then invokes only the host-configured trusted `push` action;
 - a four-pad waiting game with a persistent high score and one-time round-20 message;
@@ -80,6 +84,9 @@ down its child cleanly.
 ## Safety contract
 
 - Status is read from configured state/checkpoint/receipt files; a PID alone is not treated as progress.
+- Acquisition health is based only on monotonic authoritative accepted growth.
+  Retrieved, screened, attempted, and heartbeat counts remain useful diagnostics,
+  but cannot label a stagnant lane healthy.
 - Inactivity is multi-signal: accepted, discovery-page/cursor, candidate-inventory,
   stage, upload, publication, verification, checkpoint timestamp, and receipt
   movement all count. A quiet accepted counter cannot terminate active discovery.

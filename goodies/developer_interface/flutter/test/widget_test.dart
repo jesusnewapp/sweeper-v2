@@ -610,6 +610,55 @@ void main() {
     expect(find.textContaining('0 uploaded'), findsNothing);
   });
 
+  testWidgets('retrieval is pipeline two while accepted remains distinct', (
+    tester,
+  ) async {
+    final since = DateTime.utc(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ModelCard(
+            model: const ModelView(
+              id: 'project-puritas',
+              name: 'Project Puritas · Puritan Search',
+              stage: 'acquisition-running',
+              mode: 'acquisition',
+              modeDetail: {
+                'substageProgressLabel': 'Retrieving and accepting books',
+                'substageProgressCurrent': 495,
+                'substageProgressTarget': 990,
+              },
+              accepted: 0,
+              target: 1000,
+              uploaded: 0,
+              health: Health.healthy,
+              detail: 'Retrieval moving · 495/990 books processed · 0 authoritatively accepted',
+            ),
+            observation: ProgressObservation(
+              progressTenthsPercent: 0,
+              since: since,
+            ),
+            stageObservation: StageObservation(
+              stage: 'acquisition-running',
+              since: since,
+            ),
+            now: since.add(const Duration(seconds: 19)),
+            onPush: () {},
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.widget<Text>(
+        find.byKey(const ValueKey('pipeline-label-project-puritas')),
+      ).data,
+      'Pipeline 2/6 · Discover / acquire',
+    );
+    expect(find.text('0 / 1000'), findsOneWidget);
+    expect(find.textContaining('Retrieving and accepting books'), findsWidgets);
+    expect(find.textContaining('50.0% left'), findsOneWidget);
+  });
+
   testWidgets('discovery mode opens exact live journal details', (
     tester,
   ) async {

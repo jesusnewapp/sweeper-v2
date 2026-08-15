@@ -325,6 +325,7 @@ class SweeperController:
         checkpoint_path = Path(current_root) / "checkpoint.json" if current_root else None
         checkpoint = _read_json(checkpoint_path) if checkpoint_path else {}
         progress = _read_json(Path(current_root) / "staging_upload_progress.json") if current_root else {}
+        state_stage = str(_first(state, ("stage", "status"), "inactive"))
         accepted = _count(
             _first(
                 checkpoint,
@@ -336,6 +337,28 @@ class SweeperController:
                 ),
             )
         )
+        # A resumed worker can reuse the same root while rebuilding its current
+        # membership.  During active acquisition/validation the checkpoint is
+        # the previous completed snapshot, so the authoritative live counter
+        # must come from state/journal until staging creates a new receipt.
+        active_stage = state_stage.casefold()
+        if (not progress.get("phase") and (any(marker in active_stage for marker in (
+                "acquisition-running", "validation-running", "retrieval-running"))
+                or active_stage in {"prepare", "discovery", "initialize"})):
+            accepted = _count(_first(
+                state,
+                ("acceptedInCurrentBatch", "accepted", "membershipReconciliation"),
+                0,
+            ))
+            # Older coordinators could carry an operator-pushed unit's count
+            # into the next root. Once the unit number has advanced beyond the
+            # last staged receipt, the current root's checkpoint/journal is
+            # authoritative and stale partial-unit state must not win.
+            if (batch_number > _count(state.get("lastStagedUnit"))
+                    and state.get("partialUnitReason") == "operator-push"):
+                accepted = _count(_first(
+                    checkpoint, ("acceptedCount", "catalogCount", "accepted"), 0
+                ))
         if isinstance(state.get("membershipReconciliation"), dict) and not accepted:
             accepted = _count(state["membershipReconciliation"].get("catalogMembers"))
         journal_accepted = 0
@@ -360,9 +383,7 @@ class SweeperController:
             and uploaded > 0
             and uploaded >= progress_total
         )
-        stage = progress_phase if progress_phase and progress_phase != "complete" else str(
-            _first(state, ("stage", "status"), "inactive")
-        )
+        stage = progress_phase if progress_phase and progress_phase != "complete" else state_stage
         state_updated = _first(
             checkpoint,
             ("updatedAt", "checkpointTimestamp", "lastUpdated"),
@@ -661,11 +682,15 @@ class SweeperController:
                 "substageProgressCurrent": accepted,
                 "substageProgressTarget": target,
             })
+        # The current root may already appear in Success History as soon as it
+        # receives an isolated-staging receipt. Count it through `accepted`
+        # below, not once there and again here.
         historical_accepted = sum(max(
             _count(item.get("staged")),
             _count(item.get("published")),
             _count(item.get("liveVerified")),
-        ) for item in success_history)
+        ) for item in success_history if not current_root or
+            Path(str(item.get("root", ""))).resolve() != Path(current_root).resolve())
         accepted_cumulative = historical_accepted + max(
             accepted,
             _count(pending_handoff.get("books"))
@@ -721,6 +746,12 @@ class SweeperController:
             "currentRoot": current_root,
             "mode": mode,
             "modeDetail": mode_detail,
+            "authoritativeGrowthMetric": str(
+                mode_detail.get("authoritativeGrowthMetric") or "accepted"
+            ),
+            "authoritativeGrowthCount": _count(
+                mode_detail.get("authoritativeGrowthCount", accepted_cumulative)
+            ),
             "batchNumber": batch_number,
             "successHistory": success_history,
             "screeningCompleted": screening_completed,
@@ -892,8 +923,20 @@ class SweeperController:
             if not book_count and root_value:
                 book_count = _count(_read_json(Path(root_value) / "catalog.json").get("books", []))
             raw_status = str(row.get("status") or "ready").casefold()
+            staging_receipt = _read_json(Path(root_value) / "staging_upload_receipt.json") \
+                if root_value else {}
+            exact_staged = (
+                _count(staging_receipt.get("staged")) == book_count
+                and book_count > 0
+                and staging_receipt.get("productionMutated") is False
+            )
             if current and root_value == current_root:
                 queue_status = stage
+            elif exact_staged and "unsupported" in raw_status:
+                # Source admission controls production eligibility, not staging
+                # custody. Keep exact isolated staging visible while the source
+                # remains fail-closed for the live publisher.
+                queue_status = "Staged · awaiting source admission"
             elif raw_status in {"eligible", "ready"}:
                 queue_status = "Ready to roll"
             elif "fail" in raw_status or "block" in raw_status:
@@ -965,6 +1008,7 @@ class SweeperController:
             item for item in batch_queue
             if str(item.get("status", "")).startswith((
                 "Approved handoff", "Staging upload", "Staged · waiting",
+                "Staged · awaiting",
             ))
         ]
         if not current and handoff_rows:
@@ -1209,7 +1253,8 @@ class SweeperController:
                 # Current-unit counters reset at every successful handoff. Lane
                 # health must observe the monotonic authoritative acceptance
                 # total or that rollover falsely looks like a regression to 0.
-                accepted = _count(lane.get("acceptedCumulative", lane.get("accepted")))
+                accepted = _count(lane.get("authoritativeGrowthCount",
+                                           lane.get("acceptedCumulative", lane.get("accepted"))))
                 growth = self._accepted_growth_observations.get(lane_id)
                 if growth is None:
                     growth = {

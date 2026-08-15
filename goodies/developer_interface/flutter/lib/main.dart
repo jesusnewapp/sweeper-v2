@@ -1943,6 +1943,7 @@ double? authoritativeSubstageProgress(ModelView model) {
 String discoveryAcquisitionFocus(ModelView model) {
   final signal = '${model.stage} ${model.mode}'.toLowerCase();
   if (signal.contains('acquir') ||
+      signal.contains('acquis') ||
       signal.contains('download') ||
       signal.contains('fetch') ||
       signal.contains('import')) {
@@ -2026,6 +2027,7 @@ GatePosition gatePositionFor(ModelView model) {
       stage.contains('upstream-backoff') ||
       stage.contains('discover') ||
       stage.contains('acquir') ||
+      stage.contains('acquis') ||
       stage.contains('import')) {
     return const GatePosition(2, 6);
   }

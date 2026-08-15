@@ -386,6 +386,29 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual("healthy", lane["health"])
             self.assertIsNotNone(lane["acceptedGrowthSince"])
 
+    def test_retrieval_growth_does_not_count_as_accepted_health(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            old = datetime.fromtimestamp(
+                datetime.now(timezone.utc).timestamp() - 3600, timezone.utc
+            ).isoformat()
+            state_path = root / "state.json"
+            state_path.write_text(json.dumps({
+                "status": "running", "stage": "acquisition-running",
+                "accepted": 0, "target": 1000, "updatedAt": old,
+                "counts": {"retrieved": 479, "retrievalTarget": 979},
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual("stuck", lane["health"])
+            self.assertEqual("accepted", lane["authoritativeGrowthMetric"])
+            self.assertEqual(0, lane["authoritativeGrowthCount"])
+            self.assertIsNone(lane["acceptedGrowthSince"])
+
     def test_acquisition_health_uses_cumulative_acceptance_across_rollover(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -412,6 +435,31 @@ class ControllerTests(unittest.TestCase):
             lane = SweeperController(config_path).status()["lanes"][0]
             self.assertEqual(0, lane["accepted"])
             self.assertEqual(1, lane["acceptedCumulative"])
+
+    def test_current_staged_root_is_not_double_counted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "work/judah_library/imports/lane_batch_0002"
+            unit.mkdir(parents=True)
+            books = [{"id": str(index)} for index in range(444)]
+            (unit / "catalog.json").write_text(json.dumps({"books": books}))
+            (unit / "checkpoint.json").write_text(json.dumps({"accepted": 444}))
+            (unit / "staging_upload_receipt.json").write_text(json.dumps({
+                "staged": 444, "productionMutated": False,
+            }))
+            (root / "state.json").write_text(json.dumps({
+                "status": "complete", "stage": "staged-complete",
+                "currentRoot": str(unit), "accepted": 444,
+            }))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root), "lanes": [{
+                    "id": "source", "statePath": "state.json",
+                    "historyPrefix": "lane_batch_",
+                }],
+            }))
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual(444, lane["acceptedCumulative"])
 
     def test_recent_acceptance_journal_survives_controller_restart_as_health(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -658,6 +706,60 @@ class ControllerTests(unittest.TestCase):
             }), encoding="utf-8")
             lane = SweeperController(config_path).status()["lanes"][0]
             self.assertEqual((lane["accepted"], lane["target"]), (0, 2000))
+
+    def test_new_batch_does_not_inherit_operator_push_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_014"
+            unit.mkdir()
+            (unit / "checkpoint.json").write_text(json.dumps({
+                "complete": False,
+                "accepted": [{"id": "current-1"}, {"id": "current-2"}],
+            }), encoding="utf-8")
+            (root / "state.json").write_text(json.dumps({
+                "status": "running",
+                "stage": "prepare",
+                "currentUnit": 14,
+                "lastStagedUnit": 13,
+                "currentRoot": str(unit),
+                "acceptedInCurrentBatch": 1919,
+                "partialUnit": True,
+                "partialUnitReason": "operator-push",
+                "target": 2000,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json", "target": 2000}],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual((lane["accepted"], lane["target"]), (2, 2000))
+
+    def test_active_validation_uses_live_state_not_prior_checkpoint(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "unit_001"
+            unit.mkdir()
+            (unit / "checkpoint.json").write_text(
+                json.dumps({"accepted": 915, "complete": True}), encoding="utf-8"
+            )
+            (unit / "progress.jsonl").write_text(
+                json.dumps({"kind": "accepted", "id": "current-1"}) + "\n",
+                encoding="utf-8",
+            )
+            (root / "state.json").write_text(json.dumps({
+                "status": "running", "stage": "validation-running",
+                "currentRoot": str(unit), "accepted": 28, "target": 1000,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            }), encoding="utf-8")
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "source", "statePath": "state.json"}],
+            }), encoding="utf-8")
+            lane = SweeperController(config_path).status()["lanes"][0]
+            self.assertEqual((lane["accepted"], lane["target"]), (28, 1000))
 
     def test_exact_upload_receipt_appears_in_source_history(self):
         with tempfile.TemporaryDirectory() as temporary:
