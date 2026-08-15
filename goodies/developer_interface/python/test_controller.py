@@ -36,6 +36,36 @@ class JsonReadCacheTest(unittest.TestCase):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_permanent_receipt_accounts_for_live_duplicate_without_stuck_custody(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = root / "work/judah_library/imports/internet_archive_unit_001"
+            unit.mkdir(parents=True)
+            (unit / "checkpoint.json").write_text(json.dumps({
+                "accepted": [{"id": str(index)} for index in range(1202)],
+            }))
+            (unit / "staging_upload_receipt.json").write_text(json.dumps({
+                "staged": 1202, "productionMutated": False,
+            }))
+            (unit / "promotion_validation.json").write_text(json.dumps({
+                "status": "published-and-five-gate-verified",
+                "published": 1201, "liveVerified": 1201,
+            }))
+            (root / "state.json").write_text(json.dumps({
+                "currentRoot": str(unit), "status": "complete",
+            }))
+            config = root / "config.json"
+            config.write_text(json.dumps({
+                "projectRoot": str(root), "lanes": [{
+                    "id": "internet-archive", "statePath": "state.json",
+                    "target": 2000,
+                }],
+            }))
+            lane = SweeperController(config).status()["lanes"][0]
+            self.assertEqual((1202, 1202), (lane["accepted"], lane["target"]))
+            self.assertEqual("live-verified", lane["modeDetail"]["custodyStage"])
+            self.assertIn("1 duplicate already live", lane["detail"])
+
     def test_retired_open_library_receipts_remain_in_archived_source_history(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

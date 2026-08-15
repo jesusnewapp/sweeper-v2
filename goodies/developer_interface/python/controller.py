@@ -437,6 +437,10 @@ class SweeperController:
         ) if current_root else {}
         staged_custody = _count(staging_receipt.get("staged"))
         live_custody = _count(promotion_receipt.get("liveVerified"))
+        permanent_live_receipt = promotion_receipt.get("status") in {
+            "published-and-five-gate-verified",
+            "already-live-and-five-gate-accounted",
+        }
         if pending_handoff is not None:
             handed_off = _count(pending_handoff.get("books"))
             # Custody moves to staging, but the accepted books remain visible
@@ -446,10 +450,20 @@ class SweeperController:
             detail = (
                 f"{handed_off} accepted books protected · handed to staging"
             )
-        if staged_custody > 0 and live_custody < staged_custody:
+        if staged_custody > 0 and not permanent_live_receipt:
             display_accepted = staged_custody
             display_target = staged_custody
             detail = f"{staged_custody} accepted books protected · publisher custody"
+        elif staged_custody > 0 and permanent_live_receipt:
+            already_live = max(0, staged_custody - live_custody)
+            display_accepted = staged_custody
+            display_target = staged_custody
+            detail = (
+                f"{staged_custody} accepted books fully accounted · "
+                f"{live_custody} newly live-verified"
+            )
+            if already_live:
+                detail += f" · {already_live} duplicate already live"
         restored_live = _count(checkpoint.get("restoredLiveOverlapCount"))
         if restored_live > 0 and staged_custody == 0:
             detail = (
@@ -504,12 +518,12 @@ class SweeperController:
             "handoffBooks": _count(pending_handoff.get("books"))
             if pending_handoff is not None else 0,
             "custodyStage": (
-                "live-verified" if live_custody > 0
+                "live-verified" if permanent_live_receipt
                 else "publisher" if staged_custody > 0
                 else "staging" if pending_handoff is not None
                 else "acquisition"
             ),
-            "custodyBooks": live_custody or staged_custody or (
+            "custodyBooks": staged_custody or live_custody or (
                 _count(pending_handoff.get("books"))
                 if pending_handoff is not None else accepted
             ),
@@ -1094,7 +1108,7 @@ class SweeperController:
             ("open-library", "Open Library", "open_library_"),
             ("library-of-congress", "Library of Congress", "library_of_congress_"),
             ("internet-archive", "Internet Archive", "internet_archive_"),
-            ("global-grey", "Global Grey Ebooks", "global_grey_"),
+            ("global-grey-christianity", "Global Grey Ebooks", "global_grey_"),
         )
         archived: List[Dict[str, Any]] = []
         imports = self.project_root / "work/judah_library/imports"
