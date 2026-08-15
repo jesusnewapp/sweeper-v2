@@ -240,7 +240,7 @@
 				33CC10EB2044A3C60003C045 /* Resources */,
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
-				C6BDC0B272E8F72CBB519D0D /* [CP] Embed Pods Frameworks */,
+				ECE237EE5F0BFEF6F7F7CB43 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -405,7 +405,7 @@
 			shellPath = /bin/sh;
 			shellScript = "\"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh && touch Flutter/ephemeral/tripwire";
 		};
-		C6BDC0B272E8F72CBB519D0D /* [CP] Embed Pods Frameworks */ = {
+		ECE237EE5F0BFEF6F7F7CB43 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (

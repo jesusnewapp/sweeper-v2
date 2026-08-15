@@ -10,6 +10,7 @@
       "statePath": "work/source-one/state.json",
       "navigationPath": "work/source-one/navigation-query.json",
       "target": 2000,
+      "displayCumulativeProgress": true,
       "watchAfterSeconds": 900,
       "redAfterSeconds": 3600,
       "detail": "Configure this lane for an authorized public source"

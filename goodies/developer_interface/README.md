@@ -101,6 +101,11 @@ down its child cleanly.
   accepted survivors; acquisition shows accepted versus target; staging upload
   shows uploaded versus its exact receipt target. A prior accepted count is
   never presented as the active discovery counter.
+- A multi-checkpoint campaign may set `displayCumulativeProgress` on its lane.
+  The card then retains accepted custody across checkpoint changes and names
+  the split explicitly: total campaign custody, protected prior-unit books,
+  and books accepted by the currently acquiring unit. Moving books to staging
+  or publisher custody cannot make the campaign counter fall back to zero.
 - Every bounded loading phase may expose `gateProgressCurrent` and
   `gateProgressTarget`. The interface renders a separate exact 0–100% meter for
   that phase. It never manufactures a percentage when an adapter has not

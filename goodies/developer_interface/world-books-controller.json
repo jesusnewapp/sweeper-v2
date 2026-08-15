@@ -5,13 +5,22 @@
   "codexLive": 0,
   "lanes": [
     {
-      "id": "gallica-fr-en",
-      "name": "Gallica · French to English",
-      "statePath": "work/world_books/gallica/state.json",
+      "id": "internet-archive-french",
+      "name": "Internet Archive · French World",
+      "statePath": "work/world_books/internet_archive_french/state.json",
       "target": 2000,
       "watchAfterSeconds": 900,
       "redAfterSeconds": 3600,
-      "detail": "Public-domain French Christian books translated directly into English manuscripts"
+      "detail": "Complete French Christian text artifacts translated directly into English review manuscripts"
+    },
+    {
+      "id": "europeana-french",
+      "name": "Europeana · French World",
+      "statePath": "work/world_books/europeana_french/state.json",
+      "target": 2000,
+      "watchAfterSeconds": 900,
+      "redAfterSeconds": 3600,
+      "detail": "Openly reusable complete French text artifacts with provider provenance; API key required"
     },
     {
       "id": "translation-review",

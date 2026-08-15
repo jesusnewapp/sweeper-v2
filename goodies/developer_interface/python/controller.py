@@ -671,6 +671,24 @@ class SweeperController:
             _count(pending_handoff.get("books"))
             if pending_handoff is not None else 0,
         )
+        if bool(definition.get("displayCumulativeProgress", False)):
+            # Campaign-goal cards must retain visible custody across bounded
+            # checkpoints. Advancing to a fresh unit resets only that unit's
+            # counter; it must never make already staged or live-verified books
+            # appear to have vanished from the campaign.
+            display_accepted = accepted_cumulative
+            display_target = _count(definition.get("target")) or target
+            mode_detail.update({
+                "campaignAccepted": accepted_cumulative,
+                "campaignTarget": display_target,
+                "currentUnitAccepted": accepted,
+                "protectedPriorUnits": historical_accepted,
+            })
+            detail = (
+                f"{accepted_cumulative}/{display_target} campaign custody · "
+                f"{historical_accepted} protected in prior units · "
+                f"Unit {batch_number} acquiring {accepted}"
+            )
         screening_completed = bool(definition.get("screeningCompleted", False))
         screening_accepted = _count(definition.get("screeningAccepted"))
         screening_total = _count(definition.get("screeningTotal"))
