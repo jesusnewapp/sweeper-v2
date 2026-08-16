@@ -36,6 +36,22 @@ class JsonReadCacheTest(unittest.TestCase):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_candidate_count_is_always_exposed_from_retrieval_queue(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "state.json").write_text(json.dumps({
+                "status": "ready", "stage": "source-retrieval-queued",
+                "retrievalQueued": 2156, "accepted": 0, "target": 6921,
+            }))
+            config = root / "config.json"
+            config.write_text(json.dumps({
+                "projectRoot": str(root),
+                "lanes": [{"id": "earlyprint", "statePath": "state.json"}],
+            }))
+            lane = SweeperController(config).status()["lanes"][0]
+            self.assertEqual(2156, lane["candidateCount"])
+            self.assertEqual(2156, lane["modeDetail"]["candidateCount"])
+
     def test_permanent_receipt_accounts_for_live_duplicate_without_stuck_custody(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

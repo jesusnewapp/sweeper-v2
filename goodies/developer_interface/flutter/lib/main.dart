@@ -1586,6 +1586,7 @@ class ModelView {
     required this.name,
     required this.stage,
     required this.accepted,
+    this.candidateCount = 0,
     required this.target,
     required this.uploaded,
     required this.health,
@@ -1603,6 +1604,7 @@ class ModelView {
   final String name;
   final String stage;
   final int accepted;
+  final int candidateCount;
   final int target;
   final int uploaded;
   final Health health;
@@ -1624,6 +1626,7 @@ class ModelView {
   ModelView copyWith({
     String? stage,
     int? accepted,
+    int? candidateCount,
     int? target,
     int? uploaded,
     Health? health,
@@ -1633,6 +1636,7 @@ class ModelView {
     name: name,
     stage: stage ?? this.stage,
     accepted: accepted ?? this.accepted,
+    candidateCount: candidateCount ?? this.candidateCount,
     target: target ?? this.target,
     uploaded: uploaded ?? this.uploaded,
     health: health ?? this.health,
@@ -1654,6 +1658,14 @@ class ModelView {
       name: json['name'] as String? ?? 'Unnamed lane',
       stage: json['stage'] as String? ?? 'unknown',
       accepted: (json['accepted'] as num?)?.toInt() ?? 0,
+      candidateCount:
+          (json['candidateCount'] as num?)?.toInt() ??
+          ((json['modeDetail'] is Map
+                      ? (json['modeDetail'] as Map)['candidateCount']
+                      : null)
+                  as num?)
+              ?.toInt() ??
+          0,
       target: (json['target'] as num?)?.toInt() ?? 0,
       uploaded: (json['uploaded'] as num?)?.toInt() ?? 0,
       health: Health.values.firstWhere(
@@ -2580,13 +2592,17 @@ class ModelCard extends StatelessWidget {
         (normalizedStage.contains('validation-complete') ||
             normalizedStage.contains('acquisition-complete'));
     final capacityProtected = normalizedStage.contains('capacity-protected');
+    final adapterActive = model.modeDetail['adapterActive'] == true;
     final uiStuck =
-        !sourceReadyToStage && !capacityProtected && heldFor.inMinutes >= 5;
+        !sourceReadyToStage &&
+        !capacityProtected &&
+        !adapterActive &&
+        heldFor.inMinutes >= 5;
     final uiActive =
         !publisherIdle &&
         !uiStuck &&
         model.health != Health.failed &&
-        heldFor.inSeconds <= 60;
+        (adapterActive || heldFor.inSeconds <= 60);
     final activityColor = capacityProtected
         ? const Color(0xffffd166)
         : sourceReadyToStage
@@ -2605,7 +2621,9 @@ class ModelCard extends StatelessWidget {
         : uiStuck
         ? 'Stuck'
         : uiActive
-        ? 'UI active'
+        ? adapterActive
+              ? 'Adapter moving'
+              : 'UI active'
         : publisherIdle
         ? 'UI idle'
         : 'No current activity';
@@ -3109,6 +3127,49 @@ class ModelCard extends StatelessWidget {
                       if (index > 0) const SizedBox(height: 6),
                       _publisherBatchRow(batchQueue[index], index),
                     ],
+                  ],
+                ),
+              ),
+            ],
+            if (model.id != 'publisher') ...[
+              const SizedBox(height: 10),
+              Container(
+                key: ValueKey('candidate-count-${model.id}'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xff0c2017),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xff28533d)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.library_books_outlined,
+                      size: 16,
+                      color: Color(0xff64dc98),
+                    ),
+                    const SizedBox(width: 7),
+                    const Text(
+                      'CANDIDATES',
+                      style: TextStyle(
+                        color: Color(0xff83a891),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      model.candidateCount.toString(),
+                      style: const TextStyle(
+                        color: Color(0xff64dc98),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ],
                 ),
               ),

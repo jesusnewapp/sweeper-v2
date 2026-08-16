@@ -558,6 +558,43 @@ class SweeperController:
             "uploadUpdatedAt": progress_updated,
             **supplemental_detail,
         }
+        review_total = _count(state.get("reviewTotal"))
+        if review_total:
+            review_processed = _count(state.get("reviewProcessed"))
+            review_remaining = max(0, review_total - review_processed)
+            adapter_times = [
+                _timestamp(state.get("heartbeatAt")),
+                _timestamp(state.get("updatedAt")),
+            ]
+            adapter_times = [value for value in adapter_times if value is not None]
+            adapter_heartbeat = max(adapter_times) if adapter_times else None
+            adapter_active = bool(
+                str(state.get("status", "")).casefold() == "running"
+                and adapter_heartbeat is not None
+                and (datetime.now(timezone.utc) - adapter_heartbeat).total_seconds() <= 90
+            )
+            mode = "acquisition"
+            mode_detail.update({
+                "mode": mode,
+                "adapterActive": adapter_active,
+                "adapterHeartbeatAt": state.get("heartbeatAt") or state.get("updatedAt"),
+                "substageProgressLabel": (
+                    "Source rate limited · automatic retry"
+                    if stage.casefold() == "source-rate-limited-retrying"
+                    else "Reviewing rights and complete source text"
+                ),
+                "substageProgressCurrent": review_processed,
+                "substageProgressTarget": review_total,
+                "nextStage": "Independent validation of accepted survivors",
+                "reviewRemaining": review_remaining,
+                "rightsDeferred": _count(state.get("rightsDeferred")),
+                "reviewRejected": _count(state.get("reviewRejected")),
+            })
+            detail = (
+                f"Review {'moving' if adapter_active else 'awaiting retry'} · "
+                f"{review_processed}/{review_total} processed · {review_remaining} candidates remaining · "
+                f"{accepted} authoritatively accepted"
+            )
         if stage.casefold() == "ready-for-next-batch":
             mode_detail.update({
                 "substageProgressLabel": "Waiting for next batch",
@@ -731,6 +768,19 @@ class SweeperController:
             max(accepted_evidence).isoformat().replace("+00:00", "Z")
             if accepted_evidence else None
         )
+        candidate_count = _count(_first(
+            state,
+            ("candidateCount", "retrievalQueued", "sourceCandidateInventory",
+             "candidateInventory", "prefiltered", "prefilteredCount"),
+            _first(checkpoint, ("candidateCount", "prefiltered", "prefilteredCount"), 0),
+        ))
+        if not candidate_count:
+            candidate_count = _count(state.get("candidates"))
+        moving_current = _count(mode_detail.get("substageProgressCurrent"))
+        moving_target = _count(mode_detail.get("substageProgressTarget"))
+        if moving_target and any(token in stage.casefold() for token in ("retriev", "acquisition", "screening")):
+            candidate_count = max(0, moving_target - moving_current)
+        mode_detail["candidateCount"] = candidate_count
         return {
             "id": lane_id,
             "name": definition.get("name", "Unnamed lane"),
@@ -738,6 +788,7 @@ class SweeperController:
             "accepted": display_accepted,
             "acceptedCumulative": accepted_cumulative,
             "acceptedUpdatedAt": accepted_updated_at,
+            "candidateCount": candidate_count,
             "target": display_target,
             "uploaded": display_uploaded,
             "health": health,

@@ -104,6 +104,40 @@ publication boundary. Sweeper remains vendor-neutral and does not require Codex,
 but the two can provide a particularly smooth complementary experience for an
 operator supervising large, long-running acquisition programs.
 
+### Source adapters and Codex-assisted operation
+
+Every provider exposes collections differently. A source may offer ordinary
+HTTPS download links, a JSON or XML API, paginated HTML, or several of these at
+once. Web Sweeper keeps that provider-specific behavior in a source adapter. An
+operator can use Codex to inspect an authorized source, create or tune its
+adapter, connect stable source identifiers and downloadable formats, add
+respectful retry and rate-limit behavior, and test the adapter before starting a
+large run. Once connected, the adapter supplies candidates while Web Sweeper
+continues to enforce the configured rights, provenance, quality, deduplication,
+staging, and publication boundaries.
+
+A practical Codex-assisted session is conversational: start the configured
+collection, watch the Developer Interface, and ask Codex to inspect or advance a
+lane when it stops showing durable progress. Codex can refresh the controller
+state, diagnose the active substage, restart a retryable adapter, or shepherd an
+approved collection toward staging. Repeated manual pushes are a recovery tool,
+not a substitute for fixing a reproducible adapter or controller defect, and no
+push should bypass rights, quality, or publication authorization.
+
+An apparently stuck lane is not always a source failure. Check free disk space
+first: downloads, extracted files, journals, and staging artifacts can fill the
+working volume and leave a healthy source unable to write its next result. Also
+check the adapter heartbeat, source rate limits, network responses, candidate
+movement, and publisher custody. After correcting the cause, refresh the UI and
+resume the lane. The Developer Interface includes refresh controls, but adapters
+must report current state and heartbeats for that refresh to reflect real work.
+
+Community contributions are especially welcome for new HTTPS/API adapters and
+for stronger controller-to-UI refresh behavior. Please keep adapters
+source-neutral outside their provider module, document source terms and stable
+identifiers, use respectful request limits, include offline fixtures, and never
+commit credentials or acquired payloads. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Web Sweeper is not tied to Codex, a particular library, Firebase, a subject, or
 an AI vendor. It downloads only sources that the operator configures and is
 intentionally fail-closed when required identity, rights, or policy metadata is
